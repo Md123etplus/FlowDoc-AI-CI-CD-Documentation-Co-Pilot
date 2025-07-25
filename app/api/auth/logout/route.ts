@@ -1,12 +1,10 @@
 import { NextResponse } from "next/server"
-import { clearUserSession } from "@/lib/auth"
+import { cookies } from "next/headers"
 
-export async function POST() {
-  try {
-    await clearUserSession()
-    return NextResponse.json({ success: true })
-  } catch (error) {
-    console.error("Error during logout:", error)
-    return NextResponse.json({ error: "Failed to logout" }, { status: 500 })
-  }
+export async function GET() {
+  // Clear the session cookie
+  cookies().delete("github_session")
+
+  // Redirect to home page
+  return NextResponse.json({ success: true })
 }

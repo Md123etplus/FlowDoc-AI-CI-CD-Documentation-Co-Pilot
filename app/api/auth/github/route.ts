@@ -1,15 +1,12 @@
 import { NextResponse } from "next/server"
-import { getAuthorizationUrl } from "@/lib/auth"
+import { getGitHubAuthUrl } from "@/lib/auth"
 
 export async function GET() {
   try {
-    const authUrl = getAuthorizationUrl()
-    return NextResponse.json({ authUrl })
+    const authUrl = getGitHubAuthUrl()
+    return NextResponse.json({ url: authUrl })
   } catch (error) {
     console.error("Error generating GitHub auth URL:", error)
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to generate authorization URL" },
-      { status: 500 },
-    )
+    return NextResponse.json({ error: "Failed to generate GitHub auth URL" }, { status: 500 })
   }
 }

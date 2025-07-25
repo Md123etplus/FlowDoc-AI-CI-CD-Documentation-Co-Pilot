@@ -1,38 +1,29 @@
-"use client"
-
-import { useSearchParams } from "next/navigation"
+import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { AlertCircle } from "lucide-react"
-import Link from "next/link"
 
 export default function AuthErrorPage() {
-  const searchParams = useSearchParams()
-  const errorMessage = searchParams.get("message") || "An authentication error occurred"
-
   return (
-    <div className="flex items-center justify-center min-h-screen bg-muted/40">
+    <div className="container flex items-center justify-center min-h-screen py-12">
       <Card className="w-full max-w-md">
-        <CardHeader className="text-center">
-          <div className="w-12 h-12 bg-destructive/10 rounded-full flex items-center justify-center mx-auto mb-4">
-            <AlertCircle className="w-6 h-6 text-destructive" />
+        <CardHeader>
+          <div className="flex items-center justify-center mb-4">
+            <div className="p-3 rounded-full bg-red-100">
+              <AlertCircle className="h-6 w-6 text-red-600" />
+            </div>
           </div>
-          <CardTitle className="text-2xl">Authentication Error</CardTitle>
-          <CardDescription>There was a problem with GitHub authentication</CardDescription>
+          <CardTitle className="text-center">Authentication Error</CardTitle>
+          <CardDescription className="text-center">There was a problem authenticating with GitHub.</CardDescription>
         </CardHeader>
-        <CardContent>
-          <div className="bg-muted p-4 rounded-md text-sm">
-            <p className="font-mono">{errorMessage}</p>
-          </div>
-          <div className="mt-4 text-sm text-muted-foreground">
-            <p>
-              This could be due to missing environment variables or GitHub OAuth configuration issues. Please check your
-              application setup.
-            </p>
-          </div>
+        <CardContent className="text-center">
+          <p className="text-sm text-muted-foreground">
+            This could be due to an expired session, invalid credentials, or a temporary issue with GitHub. Please try
+            again or contact support if the problem persists.
+          </p>
         </CardContent>
-        <CardFooter>
-          <Button asChild className="w-full">
+        <CardFooter className="flex justify-center">
+          <Button asChild>
             <Link href="/">Return to Home</Link>
           </Button>
         </CardFooter>
