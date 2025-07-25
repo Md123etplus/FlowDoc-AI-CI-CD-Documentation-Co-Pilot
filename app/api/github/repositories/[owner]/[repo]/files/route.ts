@@ -1,20 +1,24 @@
-import { NextResponse } from "next/server"
+import { type NextRequest, NextResponse } from "next/server"
 import { getUserSession } from "@/lib/auth"
 
-export async function GET(request: Request, { params }: { params: { owner: string; repo: string } }) {
+export async function GET(request: NextRequest, { params }: { params: { owner: string; repo: string } }) {
   try {
     const session = await getUserSession()
 
     if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+      return NextResponse.json({ error: "Not authenticated" }, { status: 401 })
     }
 
     const { owner, repo } = params
-    const { searchParams } = new URL(request.url)
+    const searchParams = request.nextUrl.searchParams
     const path = searchParams.get("path") || ""
 
-    // Fetch directory contents or file content
-    const response = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${path}`, {
+    // Fetch repository contents
+    const url = path
+      ? `https://api.github.com/repos/${owner}/${repo}/contents/${path}`
+      : `https://api.github.com/repos/${owner}/${repo}/contents`
+
+    const response = await fetch(url, {
       headers: {
         Authorization: `Bearer ${session.accessToken}`,
         Accept: "application/vnd.github.v3+json",
@@ -23,34 +27,12 @@ export async function GET(request: Request, { params }: { params: { owner: strin
 
     if (!response.ok) {
       if (response.status === 404) {
-        return NextResponse.json([])
+        return NextResponse.json({ error: "Path not found" }, { status: 404 })
       }
-      throw new Error(`GitHub API error: ${response.status}`)
+      throw new Error("Failed to fetch repository files")
     }
 
-    const data = await response.json()
-
-    // If it's a single file, return file content
-    if (!Array.isArray(data)) {
-      const fileContent = {
-        name: data.name,
-        path: data.path,
-        type: "file",
-        size: data.size,
-        content: data.content ? Buffer.from(data.content, "base64").toString("utf-8") : null,
-      }
-      return NextResponse.json([fileContent])
-    }
-
-    // If it's a directory, return directory contents
-    const files = data.map((item: any) => ({
-      name: item.name,
-      path: item.path,
-      type: item.type,
-      size: item.size,
-      download_url: item.download_url,
-    }))
-
+    const files = await response.json()
     return NextResponse.json(files)
   } catch (error) {
     console.error("Error fetching repository files:", error)
