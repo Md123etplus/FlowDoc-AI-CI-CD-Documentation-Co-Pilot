@@ -1,218 +1,191 @@
 "use client"
 
-import type React from "react"
+import { useState, type ReactNode } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import {
-  Sidebar,
-  SidebarContent,
-  SidebarFooter,
-  SidebarGroup,
-  SidebarGroupContent,
-  SidebarGroupLabel,
-  SidebarHeader,
-  SidebarInset,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
-  SidebarProvider,
-  SidebarTrigger,
-} from "@/components/ui/sidebar"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { Button } from "@/components/ui/button"
 import { ThemeToggle } from "@/components/theme-toggle"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import { Home, Github, FileText, GitBranch, Settings, LogOut, Code, ChevronUp, User } from "lucide-react"
-import { useGitHubUser } from "@/hooks/use-github"
+import { GitHubAuthModal } from "@/components/github-auth-modal"
+import { Code, Github, LayoutDashboard, FileCode, History, Settings, LogOut, Menu } from "lucide-react"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
+import { cn } from "@/lib/utils"
 
-const navigation = [
-  {
-    title: "Dashboard",
-    url: "/dashboard",
-    icon: Home,
-  },
-  {
-    title: "Repositories",
-    url: "/dashboard",
-    icon: Github,
-  },
-]
+interface DashboardLayoutProps {
+  children: ReactNode
+  user?: {
+    name: string | null
+    login: string
+    avatar_url: string
+  }
+}
 
-const tools = [
-  {
-    title: "CI/CD Generator",
-    url: "/tools/cicd",
-    icon: GitBranch,
-  },
-  {
-    title: "AutoDoc Generator",
-    url: "/tools/docs",
-    icon: FileText,
-  },
-]
-
-export function DashboardLayout({ children }: { children: React.ReactNode }) {
+export function DashboardLayout({ children, user }: DashboardLayoutProps) {
   const pathname = usePathname()
-  const { user, loading } = useGitHubUser()
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false)
+
+  const navigation = [
+    { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+    { name: "Repositories", href: "/repositories", icon: Github },
+    { name: "Generated Files", href: "/generated", icon: FileCode },
+    { name: "History", href: "/history", icon: History },
+    { name: "Settings", href: "/settings", icon: Settings },
+  ]
 
   const handleLogout = async () => {
-    try {
-      await fetch("/api/auth/logout", { method: "POST" })
-      window.location.href = "/"
-    } catch (error) {
-      console.error("Logout error:", error)
-    }
+    await fetch("/api/auth/logout", { method: "POST" })
+    window.location.href = "/"
   }
 
   return (
-    <SidebarProvider>
-      <div className="flex min-h-screen w-full">
-        <Sidebar>
-          <SidebarHeader>
-            <SidebarMenu>
-              <SidebarMenuItem>
-                <SidebarMenuButton size="lg" asChild>
-                  <Link href="/dashboard">
-                    <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-                      <Code className="size-4" />
-                    </div>
-                    <div className="grid flex-1 text-left text-sm leading-tight">
-                      <span className="truncate font-semibold">FlowDoc AI</span>
-                      <span className="truncate text-xs">Smart CI/CD & Docs</span>
-                    </div>
-                  </Link>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            </SidebarMenu>
-          </SidebarHeader>
+    <div className="min-h-screen flex flex-col">
+      {/* GitHub Auth Modal */}
+      <GitHubAuthModal isOpen={isAuthModalOpen} onOpenChange={setIsAuthModalOpen} />
 
-          <SidebarContent>
-            <SidebarGroup>
-              <SidebarGroupLabel>Navigation</SidebarGroupLabel>
-              <SidebarGroupContent>
-                <SidebarMenu>
-                  {navigation.map((item) => (
-                    <SidebarMenuItem key={item.title}>
-                      <SidebarMenuButton asChild isActive={pathname === item.url}>
-                        <Link href={item.url}>
-                          <item.icon />
-                          <span>{item.title}</span>
-                        </Link>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  ))}
-                </SidebarMenu>
-              </SidebarGroupContent>
-            </SidebarGroup>
-
-            <SidebarGroup>
-              <SidebarGroupLabel>AI Tools</SidebarGroupLabel>
-              <SidebarGroupContent>
-                <SidebarMenu>
-                  {tools.map((item) => (
-                    <SidebarMenuItem key={item.title}>
-                      <SidebarMenuButton asChild isActive={pathname === item.url}>
-                        <Link href={item.url}>
-                          <item.icon />
-                          <span>{item.title}</span>
-                        </Link>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  ))}
-                </SidebarMenu>
-              </SidebarGroupContent>
-            </SidebarGroup>
-          </SidebarContent>
-
-          <SidebarFooter>
-            <SidebarMenu>
-              <SidebarMenuItem>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <SidebarMenuButton
-                      size="lg"
-                      className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
-                    >
-                      <Avatar className="h-8 w-8 rounded-lg">
-                        <AvatarImage
-                          src={user?.avatar_url || "/placeholder.svg?height=32&width=32"}
-                          alt={user?.name || user?.login || "User"}
-                        />
-                        <AvatarFallback className="rounded-lg">
-                          {loading ? "..." : user?.name?.[0] || user?.login?.[0] || "U"}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div className="grid flex-1 text-left text-sm leading-tight">
-                        <span className="truncate font-semibold">
-                          {loading ? "Loading..." : user?.name || user?.login || "User"}
-                        </span>
-                        <span className="truncate text-xs">
-                          {loading ? "" : user?.email || `@${user?.login}` || ""}
-                        </span>
+      {/* Mobile Header */}
+      <header className="lg:hidden border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-40">
+        <div className="container mx-auto px-4 py-3 flex items-center justify-between">
+          <div className="flex items-center space-x-2">
+            <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
+              <Code className="w-5 h-5 text-primary-foreground" />
+            </div>
+            <span className="text-xl font-bold">FlowDoc AI</span>
+          </div>
+          <div className="flex items-center space-x-4">
+            <ThemeToggle />
+            <Sheet>
+              <SheetTrigger asChild>
+                <Button variant="outline" size="icon">
+                  <Menu className="h-5 w-5" />
+                  <span className="sr-only">Toggle menu</span>
+                </Button>
+              </SheetTrigger>
+              <SheetContent side="right" className="w-[300px] sm:w-[400px]">
+                <div className="flex flex-col h-full">
+                  <div className="px-2 py-6 border-b">
+                    <div className="flex items-center justify-between mb-6">
+                      <div className="flex items-center space-x-2">
+                        <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
+                          <Code className="w-5 h-5 text-primary-foreground" />
+                        </div>
+                        <span className="text-xl font-bold">FlowDoc AI</span>
                       </div>
-                      <ChevronUp className="ml-auto size-4" />
-                    </SidebarMenuButton>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent
-                    className="w-[--radix-dropdown-menu-trigger-width] min-w-56 rounded-lg"
-                    side="bottom"
-                    align="end"
-                    sideOffset={4}
-                  >
-                    <DropdownMenuLabel className="p-0 font-normal">
-                      <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
-                        <Avatar className="h-8 w-8 rounded-lg">
-                          <AvatarImage
-                            src={user?.avatar_url || "/placeholder.svg?height=32&width=32"}
-                            alt={user?.name || user?.login || "User"}
-                          />
-                          <AvatarFallback className="rounded-lg">
-                            {user?.name?.[0] || user?.login?.[0] || "U"}
-                          </AvatarFallback>
+                      <ThemeToggle />
+                    </div>
+                    {user && (
+                      <div className="flex items-center space-x-3">
+                        <Avatar className="h-10 w-10">
+                          <AvatarImage src={user.avatar_url || "/placeholder.svg"} alt={user.login} />
+                          <AvatarFallback>{user.name?.[0] || user.login[0]}</AvatarFallback>
                         </Avatar>
-                        <div className="grid flex-1 text-left text-sm leading-tight">
-                          <span className="truncate font-semibold">{user?.name || user?.login || "User"}</span>
-                          <span className="truncate text-xs">{user?.email || `@${user?.login}` || ""}</span>
+                        <div>
+                          <div className="font-medium">{user.name || user.login}</div>
+                          <div className="text-sm text-muted-foreground">@{user.login}</div>
                         </div>
                       </div>
-                    </DropdownMenuLabel>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem>
-                      <User className="mr-2 h-4 w-4" />
-                      <span>Account</span>
-                    </DropdownMenuItem>
-                    <DropdownMenuItem>
-                      <Settings className="mr-2 h-4 w-4" />
-                      <span>Settings</span>
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem onClick={handleLogout}>
-                      <LogOut className="mr-2 h-4 w-4" />
-                      <span>Log out</span>
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </SidebarMenuItem>
-            </SidebarMenu>
-          </SidebarFooter>
-        </Sidebar>
+                    )}
+                  </div>
+                  <nav className="flex-1 px-2 py-4 space-y-1">
+                    {navigation.map((item) => {
+                      const isActive = pathname === item.href
+                      return (
+                        <Link
+                          key={item.name}
+                          href={item.href}
+                          className={cn(
+                            "flex items-center px-3 py-2 rounded-md text-sm font-medium transition-colors",
+                            isActive ? "bg-primary text-primary-foreground" : "hover:bg-muted",
+                          )}
+                        >
+                          <item.icon className="mr-3 h-5 w-5" />
+                          {item.name}
+                        </Link>
+                      )
+                    })}
+                  </nav>
+                  <div className="px-2 py-4 border-t">
+                    <Button variant="outline" className="w-full justify-start bg-transparent" onClick={handleLogout}>
+                      <LogOut className="mr-3 h-5 w-5" />
+                      Log out
+                    </Button>
+                  </div>
+                </div>
+              </SheetContent>
+            </Sheet>
+          </div>
+        </div>
+      </header>
 
-        <SidebarInset>
-          <header className="flex h-16 shrink-0 items-center gap-2 border-b px-4">
-            <SidebarTrigger className="-ml-1" />
-            <div className="ml-auto flex items-center space-x-4">
+      <div className="flex-1 flex">
+        {/* Sidebar (desktop) */}
+        <div className="hidden lg:flex lg:flex-col lg:w-64 lg:fixed lg:inset-y-0 border-r">
+          <div className="flex-1 flex flex-col min-h-0">
+            <div className="flex items-center h-16 px-4 border-b">
+              <div className="flex items-center space-x-2">
+                <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
+                  <Code className="w-5 h-5 text-primary-foreground" />
+                </div>
+                <span className="text-xl font-bold">FlowDoc AI</span>
+              </div>
+            </div>
+            <div className="flex-1 flex flex-col overflow-y-auto">
+              {user && (
+                <div className="px-4 py-4 border-b">
+                  <div className="flex items-center space-x-3">
+                    <Avatar className="h-10 w-10">
+                      <AvatarImage src={user.avatar_url || "/placeholder.svg"} alt={user.login} />
+                      <AvatarFallback>{user.name?.[0] || user.login[0]}</AvatarFallback>
+                    </Avatar>
+                    <div>
+                      <div className="font-medium">{user.name || user.login}</div>
+                      <div className="text-sm text-muted-foreground">@{user.login}</div>
+                    </div>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="mt-2 text-xs w-full justify-start text-muted-foreground"
+                    onClick={() => setIsAuthModalOpen(true)}
+                  >
+                    <Github className="mr-1 h-3 w-3" />
+                    Reconnect GitHub
+                  </Button>
+                </div>
+              )}
+              <nav className="flex-1 px-2 py-4 space-y-1">
+                {navigation.map((item) => {
+                  const isActive = pathname === item.href
+                  return (
+                    <Link
+                      key={item.name}
+                      href={item.href}
+                      className={cn(
+                        "flex items-center px-3 py-2 rounded-md text-sm font-medium transition-colors",
+                        isActive ? "bg-primary text-primary-foreground" : "hover:bg-muted",
+                      )}
+                    >
+                      <item.icon className="mr-3 h-5 w-5" />
+                      {item.name}
+                    </Link>
+                  )
+                })}
+              </nav>
+            </div>
+            <div className="p-4 border-t flex items-center justify-between">
+              <Button variant="outline" size="sm" onClick={handleLogout}>
+                <LogOut className="mr-2 h-4 w-4" />
+                Log out
+              </Button>
               <ThemeToggle />
             </div>
-          </header>
-          <main className="flex-1 p-6">{children}</main>
-        </SidebarInset>
+          </div>
+        </div>
+
+        {/* Main content */}
+        <div className="lg:pl-64 flex-1">
+          <main className="flex-1">{children}</main>
+        </div>
       </div>
-    </SidebarProvider>
+    </div>
   )
 }
