@@ -46,33 +46,58 @@ export function GitHubAuthModal({ isOpen, onOpenChange }: GitHubAuthModalProps) 
 
     // Poll for popup closure or redirect
     const checkPopup = setInterval(() => {
-      if (popup.closed) {
-        clearInterval(checkPopup)
-        setIsLoading(false)
+      try {
+        // This will throw if the popup was redirected to a different origin
+        if (popup.closed) {
+          clearInterval(checkPopup)
+          setIsLoading(false)
 
-        // Check if authentication was successful by checking for session
-        fetch("/api/auth/session")
-          .then((res) => res.json())
-          .then((data) => {
-            if (data.authenticated) {
-              onOpenChange(false)
-              router.push("/dashboard")
-              toast({
-                title: "Authentication Successful",
-                description: "You've successfully connected your GitHub account.",
-              })
-            }
-          })
-          .catch(() => {
-            // Authentication failed or was cancelled
-            toast({
-              title: "Authentication Failed",
-              description: "GitHub authentication was unsuccessful or cancelled.",
-              variant: "destructive",
+          // Check if authentication was successful by checking for session
+          fetch("/api/auth/session")
+            .then((res) => res.json())
+            .then((data) => {
+              if (data.authenticated) {
+                onOpenChange(false)
+                router.push("/dashboard")
+                toast({
+                  title: "Authentication Successful",
+                  description: "You've successfully connected your GitHub account.",
+                })
+              } else {
+                // Authentication failed or was cancelled
+                toast({
+                  title: "Authentication Failed",
+                  description: "GitHub authentication was unsuccessful or cancelled.",
+                  variant: "destructive",
+                })
+              }
             })
-          })
+            .catch(() => {
+              // Authentication failed or was cancelled
+              toast({
+                title: "Authentication Failed",
+                description: "GitHub authentication was unsuccessful or cancelled.",
+                variant: "destructive",
+              })
+            })
+        }
+      } catch (e) {
+        // Ignore cross-origin errors when checking popup state
       }
     }, 500)
+
+    // Set a timeout to clear the interval if it takes too long
+    setTimeout(() => {
+      clearInterval(checkPopup)
+      if (!popup.closed) {
+        setIsLoading(false)
+        toast({
+          title: "Authentication Timeout",
+          description: "The authentication process took too long. Please try again.",
+          variant: "destructive",
+        })
+      }
+    }, 120000) // 2 minutes timeout
   }
 
   return (

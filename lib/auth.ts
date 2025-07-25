@@ -18,24 +18,43 @@ export interface UserSession {
 }
 
 export function getGitHubOAuthConfig(): GitHubOAuthConfig {
+  const clientId = process.env.GITHUB_CLIENT_ID
+  const clientSecret = process.env.GITHUB_CLIENT_SECRET
+  const redirectUri =
+    process.env.GITHUB_REDIRECT_URI ||
+    `${process.env.NEXTAUTH_URL || process.env.VERCEL_URL || "http://localhost:3000"}/api/auth/github/callback`
+
+  if (!clientId) {
+    throw new Error("GITHUB_CLIENT_ID environment variable is not set")
+  }
+
+  if (!clientSecret) {
+    throw new Error("GITHUB_CLIENT_SECRET environment variable is not set")
+  }
+
   return {
-    clientId: process.env.GITHUB_CLIENT_ID!,
-    clientSecret: process.env.GITHUB_CLIENT_SECRET!,
-    redirectUri: process.env.GITHUB_REDIRECT_URI || `${process.env.NEXTAUTH_URL}/api/auth/github/callback`,
+    clientId,
+    clientSecret,
+    redirectUri,
   }
 }
 
 export function getAuthorizationUrl(): string {
-  const config = getGitHubOAuthConfig()
-  const params = new URLSearchParams({
-    client_id: config.clientId,
-    redirect_uri: config.redirectUri,
-    scope: "repo user:email",
-    response_type: "code",
-    state: generateRandomState(),
-  })
+  try {
+    const config = getGitHubOAuthConfig()
+    const params = new URLSearchParams({
+      client_id: config.clientId,
+      redirect_uri: config.redirectUri,
+      scope: "repo user:email",
+      response_type: "code",
+      state: generateRandomState(),
+    })
 
-  return `https://github.com/login/oauth/authorize?${params.toString()}`
+    return `https://github.com/login/oauth/authorize?${params.toString()}`
+  } catch (error) {
+    console.error("Error generating GitHub authorization URL:", error)
+    throw error
+  }
 }
 
 export async function exchangeCodeForToken(code: string): Promise<string> {
@@ -69,7 +88,7 @@ export async function exchangeCodeForToken(code: string): Promise<string> {
 }
 
 export async function setUserSession(session: UserSession): Promise<void> {
-  const cookieStore = await cookies()
+  const cookieStore = cookies()
 
   // In production, you should encrypt this data
   cookieStore.set("github_session", JSON.stringify(session), {
@@ -82,7 +101,7 @@ export async function setUserSession(session: UserSession): Promise<void> {
 
 export async function getUserSession(): Promise<UserSession | null> {
   try {
-    const cookieStore = await cookies()
+    const cookieStore = cookies()
     const sessionCookie = cookieStore.get("github_session")
 
     if (!sessionCookie) {
@@ -97,7 +116,7 @@ export async function getUserSession(): Promise<UserSession | null> {
 }
 
 export async function clearUserSession(): Promise<void> {
-  const cookieStore = await cookies()
+  const cookieStore = cookies()
   cookieStore.delete("github_session")
 }
 

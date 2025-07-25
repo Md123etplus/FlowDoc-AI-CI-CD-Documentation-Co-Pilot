@@ -1,8 +1,7 @@
-import { type NextRequest, NextResponse } from "next/server"
+import { NextResponse } from "next/server"
 import { getUserSession } from "@/lib/auth"
-import { GitHubAPI } from "@/lib/github"
 
-export async function GET(request: NextRequest, { params }: { params: { owner: string; repo: string } }) {
+export async function GET(request: Request, { params }: { params: { owner: string; repo: string } }) {
   try {
     const session = await getUserSession()
 
@@ -11,26 +10,38 @@ export async function GET(request: NextRequest, { params }: { params: { owner: s
     }
 
     const { owner, repo } = params
-    const github = new GitHubAPI(session.accessToken)
 
-    // Get repository details
-    const repository = await github.getRepository(owner, repo)
-
-    // Get relevant files
-    const [workflowFiles, docFiles] = await Promise.all([
-      github.getWorkflowFiles(owner, repo),
-      github.getDocumentationFiles(owner, repo),
-    ])
-
-    return NextResponse.json({
-      repository,
-      files: {
-        workflows: workflowFiles,
-        documentation: docFiles,
+    const response = await fetch(`https://api.github.com/repos/${owner}/${repo}`, {
+      headers: {
+        Authorization: `Bearer ${session.accessToken}`,
+        Accept: "application/vnd.github.v3+json",
       },
     })
+
+    if (!response.ok) {
+      return NextResponse.json({ error: "Failed to fetch repository" }, { status: response.status })
+    }
+
+    const data = await response.json()
+
+    return NextResponse.json({
+      id: data.id,
+      name: data.name,
+      fullName: data.full_name,
+      owner: {
+        login: data.owner.login,
+        avatarUrl: data.owner.avatar_url,
+      },
+      description: data.description,
+      defaultBranch: data.default_branch,
+      language: data.language,
+      stargazersCount: data.stargazers_count,
+      forksCount: data.forks_count,
+      updatedAt: data.updated_at,
+      visibility: data.visibility,
+    })
   } catch (error) {
-    console.error("Error fetching repository data:", error)
-    return NextResponse.json({ error: "Failed to fetch repository data" }, { status: 500 })
+    console.error("Error fetching repository:", error)
+    return NextResponse.json({ error: "Failed to fetch repository" }, { status: 500 })
   }
 }
