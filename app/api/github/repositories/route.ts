@@ -17,11 +17,14 @@ export async function GET(request: Request) {
       headers: {
         Authorization: `Bearer ${session.accessToken}`,
         Accept: "application/vnd.github.v3+json",
+        "User-Agent": "FlowDoc-AI",
       },
     })
 
     if (!response.ok) {
-      throw new Error("Failed to fetch repositories from GitHub")
+      const errorText = await response.text()
+      console.error("GitHub API error:", response.status, errorText)
+      throw new Error(`GitHub API error: ${response.status}`)
     }
 
     const repositories = await response.json()

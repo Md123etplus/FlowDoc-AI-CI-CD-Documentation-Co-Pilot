@@ -1,11 +1,12 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getSession } from "@/lib/auth"
+import { getUserSession } from "@/lib/auth"
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ owner: string; repo: string }> }) {
   try {
-    const session = await getSession()
-    if (!session?.accessToken) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    const session = await getUserSession()
+
+    if (!session) {
+      return NextResponse.json({ error: "Not authenticated" }, { status: 401 })
     }
 
     const { owner, repo } = await params
@@ -17,6 +18,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       headers: {
         Authorization: `Bearer ${session.accessToken}`,
         Accept: "application/vnd.github.v3+json",
+        "User-Agent": "FlowDoc-AI",
       },
     })
 
@@ -27,21 +29,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       throw new Error(`GitHub API error: ${contentsResponse.status}`)
     }
 
-    const contentsData = await contentsResponse.json()
-
-    // If it's a single file, decode the content
-    if (!Array.isArray(contentsData) && contentsData.content) {
-      try {
-        contentsData.decodedContent = Buffer.from(contentsData.content, "base64").toString("utf-8")
-      } catch (error) {
-        // If decoding fails, it might be a binary file
-        contentsData.decodedContent = null
-      }
-    }
-
-    return NextResponse.json(contentsData)
+    const contents = await contentsResponse.json()
+    return NextResponse.json(contents)
   } catch (error) {
-    console.error("Error fetching repository files:", error)
+    console.error("Repository files API error:", error)
     return NextResponse.json({ error: "Failed to fetch repository files" }, { status: 500 })
   }
 }
