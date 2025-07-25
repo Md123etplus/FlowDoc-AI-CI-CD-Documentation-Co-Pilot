@@ -6,26 +6,23 @@ export async function GET() {
     const redirectUri = process.env.GITHUB_REDIRECT_URI
 
     if (!clientId || !redirectUri) {
-      console.error("Missing GitHub OAuth configuration")
-      return NextResponse.redirect(
-        new URL("/auth/error?error=configuration", process.env.NEXTAUTH_URL || "http://localhost:3000"),
-      )
+      console.error("Missing GitHub OAuth configuration:", {
+        clientId: !!clientId,
+        redirectUri: !!redirectUri,
+      })
+      return NextResponse.json({ error: "GitHub OAuth not configured properly" }, { status: 500 })
     }
 
-    const params = new URLSearchParams({
-      client_id: clientId,
-      redirect_uri: redirectUri,
-      scope: "user:email repo",
-      response_type: "code",
-    })
+    const scope = "repo user:email"
+    const state = Math.random().toString(36).substring(2, 15)
 
-    const githubAuthUrl = `https://github.com/login/oauth/authorize?${params.toString()}`
+    const githubAuthUrl = `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=${encodeURIComponent(
+      redirectUri,
+    )}&scope=${encodeURIComponent(scope)}&state=${state}`
 
     return NextResponse.redirect(githubAuthUrl)
   } catch (error) {
     console.error("GitHub OAuth error:", error)
-    return NextResponse.redirect(
-      new URL("/auth/error?error=oauth_failed", process.env.NEXTAUTH_URL || "http://localhost:3000"),
-    )
+    return NextResponse.json({ error: "Failed to initiate GitHub OAuth" }, { status: 500 })
   }
 }

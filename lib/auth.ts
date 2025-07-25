@@ -1,75 +1,54 @@
+import type { NextResponse } from "next/server"
 import { cookies } from "next/headers"
 
-export interface GitHubOAuthConfig {
-  clientId: string
-  clientSecret: string
-  redirectUri: string
+export interface User {
+  id: number
+  login: string
+  name: string | null
+  email: string | null
+  avatar_url: string
 }
 
-export interface UserSession {
+export interface Session {
+  user: User
   accessToken: string
-  user: {
-    id: number
-    login: string
-    name: string | null
-    email: string | null
-    avatar_url: string
-  }
-  authenticated: boolean
 }
 
-export function getGitHubOAuthConfig(): GitHubOAuthConfig {
-  const clientId = process.env.GITHUB_CLIENT_ID
-  const clientSecret = process.env.GITHUB_CLIENT_SECRET
-  const redirectUri = process.env.GITHUB_REDIRECT_URI
+const SESSION_COOKIE_NAME = "github_session"
+const SESSION_SECRET = process.env.NEXTAUTH_SECRET || "fallback-secret-key"
 
-  if (!clientId) {
-    throw new Error("GITHUB_CLIENT_ID environment variable is not set")
-  }
+export async function setSession(response: NextResponse, session: Session) {
+  const sessionData = JSON.stringify(session)
+  const encodedSession = Buffer.from(sessionData).toString("base64")
 
-  if (!clientSecret) {
-    throw new Error("GITHUB_CLIENT_SECRET environment variable is not set")
-  }
-
-  if (!redirectUri) {
-    throw new Error("GITHUB_REDIRECT_URI environment variable is not set")
-  }
-
-  return {
-    clientId,
-    clientSecret,
-    redirectUri,
-  }
+  response.cookies.set(SESSION_COOKIE_NAME, encodedSession, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    maxAge: 60 * 60 * 24 * 7, // 7 days
+    path: "/",
+  })
 }
 
-export async function getUserSession(): Promise<UserSession | null> {
+export async function getSession(): Promise<Session | null> {
   try {
     const cookieStore = await cookies()
-    const sessionCookie = cookieStore.get("github_session")
+    const sessionCookie = cookieStore.get(SESSION_COOKIE_NAME)
 
-    if (!sessionCookie) {
+    if (!sessionCookie?.value) {
       return null
     }
 
-    const session = JSON.parse(sessionCookie.value) as UserSession
-
-    // Validate session structure
-    if (!session.user || !session.accessToken || !session.authenticated) {
-      return null
-    }
+    const sessionData = Buffer.from(sessionCookie.value, "base64").toString("utf-8")
+    const session = JSON.parse(sessionData) as Session
 
     return session
   } catch (error) {
-    console.error("Error parsing session:", error)
+    console.error("Error getting session:", error)
     return null
   }
 }
 
-export async function clearUserSession(): Promise<void> {
-  const cookieStore = await cookies()
-  cookieStore.delete("github_session")
-}
-
-export function generateRandomState(): string {
-  return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15)
+export async function clearSession(response: NextResponse) {
+  response.cookies.delete(SESSION_COOKIE_NAME)
 }
