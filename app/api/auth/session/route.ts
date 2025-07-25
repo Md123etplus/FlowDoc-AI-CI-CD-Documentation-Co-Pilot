@@ -12,9 +12,10 @@ export async function GET() {
     return NextResponse.json({
       authenticated: true,
       user: session.user,
+      accessToken: session.accessToken,
     })
   } catch (error) {
-    console.error("Session API error:", error)
-    return NextResponse.json({ authenticated: false })
+    console.error("Session check error:", error)
+    return NextResponse.json({ authenticated: false }, { status: 500 })
   }
 }
