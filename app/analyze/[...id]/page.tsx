@@ -35,7 +35,8 @@ export default function AnalyzePage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const repositoryId = params.id as string
+  // Handle both formats: [...id] for owner/repo and [id] for single segment
+  const repositoryId = Array.isArray(params.id) ? params.id.join("/") : (params.id as string)
 
   useEffect(() => {
     async function fetchRepositoryData() {
@@ -46,7 +47,12 @@ export default function AnalyzePage() {
         setError(null)
 
         // Parse owner/repo from the ID
-        const [owner, repo] = repositoryId.split("/")
+        const parts = repositoryId.split("/")
+        if (parts.length !== 2) {
+          throw new Error("Invalid repository format. Expected format: owner/repo")
+        }
+
+        const [owner, repo] = parts
         if (!owner || !repo) {
           throw new Error("Invalid repository format. Expected format: owner/repo")
         }
@@ -56,6 +62,9 @@ export default function AnalyzePage() {
         if (!response.ok) {
           if (response.status === 404) {
             throw new Error("Repository not found")
+          }
+          if (response.status === 401) {
+            throw new Error("Authentication required. Please log in again.")
           }
           throw new Error("Failed to fetch repository details")
         }
@@ -113,6 +122,11 @@ export default function AnalyzePage() {
           </CardHeader>
           <CardContent>
             <p className="text-muted-foreground">Please check if the repository exists and you have access to it.</p>
+            <div className="mt-4">
+              <Button onClick={() => window.location.reload()} variant="outline">
+                Try Again
+              </Button>
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -132,13 +146,13 @@ export default function AnalyzePage() {
     )
   }
 
-  const totalLanguageBytes = Object.values(repository.languages).reduce((sum, bytes) => sum + bytes, 0)
-  const languagePercentages = Object.entries(repository.languages).map(([language, bytes]) => ({
+  const totalLanguageBytes = Object.values(repository.languages || {}).reduce((sum, bytes) => sum + bytes, 0)
+  const languagePercentages = Object.entries(repository.languages || {}).map(([language, bytes]) => ({
     language,
-    percentage: ((bytes / totalLanguageBytes) * 100).toFixed(1),
+    percentage: totalLanguageBytes > 0 ? ((bytes / totalLanguageBytes) * 100).toFixed(1) : "0",
   }))
 
-  const configFiles = repository.contents.filter(
+  const configFiles = (repository.contents || []).filter(
     (file) =>
       file.type === "file" &&
       (file.name.includes("config") ||
@@ -146,10 +160,12 @@ export default function AnalyzePage() {
         file.name.includes("requirements.txt") ||
         file.name.includes("Dockerfile") ||
         file.name.includes(".yml") ||
-        file.name.includes(".yaml")),
+        file.name.includes(".yaml") ||
+        file.name.includes("Jenkinsfile") ||
+        file.name.includes(".github")),
   )
 
-  const documentationFiles = repository.contents.filter(
+  const documentationFiles = (repository.contents || []).filter(
     (file) =>
       file.type === "file" &&
       (file.name.toLowerCase().includes("readme") ||
@@ -216,12 +232,16 @@ export default function AnalyzePage() {
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
-              {languagePercentages.slice(0, 5).map(({ language, percentage }) => (
-                <div key={language} className="flex items-center justify-between">
-                  <span className="text-sm font-medium">{language}</span>
-                  <span className="text-sm text-muted-foreground">{percentage}%</span>
-                </div>
-              ))}
+              {languagePercentages.length > 0 ? (
+                languagePercentages.slice(0, 5).map(({ language, percentage }) => (
+                  <div key={language} className="flex items-center justify-between">
+                    <span className="text-sm font-medium">{language}</span>
+                    <span className="text-sm text-muted-foreground">{percentage}%</span>
+                  </div>
+                ))
+              ) : (
+                <p className="text-sm text-muted-foreground">No language data available</p>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -284,7 +304,7 @@ export default function AnalyzePage() {
           </CardHeader>
           <CardContent>
             <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-3">
-              {repository.contents.map((item) => (
+              {(repository.contents || []).map((item) => (
                 <div key={item.path} className="flex items-center gap-2 p-2 rounded border">
                   <div className={`w-2 h-2 rounded-full ${item.type === "dir" ? "bg-yellow-500" : "bg-gray-500"}`} />
                   <span className="text-sm font-medium">{item.name}</span>

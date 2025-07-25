@@ -17,13 +17,13 @@ export async function GET() {
     })
 
     if (!response.ok) {
-      throw new Error("Failed to fetch user data")
+      throw new Error("Failed to fetch user data from GitHub")
     }
 
     const userData = await response.json()
     return NextResponse.json(userData)
   } catch (error) {
-    console.error("Error fetching GitHub user:", error)
+    console.error("GitHub user API error:", error)
     return NextResponse.json({ error: "Failed to fetch user data" }, { status: 500 })
   }
 }
