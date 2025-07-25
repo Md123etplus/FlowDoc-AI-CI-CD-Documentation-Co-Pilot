@@ -10,11 +10,15 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     }
 
     const { owner, repo } = await params
-    const searchParams = request.nextUrl.searchParams
+    const { searchParams } = new URL(request.url)
     const path = searchParams.get("path") || ""
 
     // Fetch repository contents
-    const contentsResponse = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${path}`, {
+    const contentsUrl = path
+      ? `https://api.github.com/repos/${owner}/${repo}/contents/${path}`
+      : `https://api.github.com/repos/${owner}/${repo}/contents`
+
+    const response = await fetch(contentsUrl, {
       headers: {
         Authorization: `Bearer ${session.accessToken}`,
         Accept: "application/vnd.github.v3+json",
@@ -22,17 +26,22 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       },
     })
 
-    if (!contentsResponse.ok) {
-      if (contentsResponse.status === 404) {
+    if (!response.ok) {
+      if (response.status === 404) {
         return NextResponse.json({ error: "Path not found" }, { status: 404 })
       }
-      throw new Error(`GitHub API error: ${contentsResponse.status}`)
+      console.error("GitHub API error:", response.status, response.statusText)
+      return NextResponse.json({ error: "Failed to fetch repository files" }, { status: response.status })
     }
 
-    const contents = await contentsResponse.json()
-    return NextResponse.json(contents)
+    const contents = await response.json()
+
+    // Ensure we return an array
+    const files = Array.isArray(contents) ? contents : [contents]
+
+    return NextResponse.json(files)
   } catch (error) {
     console.error("Repository files API error:", error)
-    return NextResponse.json({ error: "Failed to fetch repository files" }, { status: 500 })
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }

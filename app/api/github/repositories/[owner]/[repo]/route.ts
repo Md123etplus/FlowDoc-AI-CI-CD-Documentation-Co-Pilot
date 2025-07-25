@@ -24,13 +24,17 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       if (repoResponse.status === 404) {
         return NextResponse.json({ error: "Repository not found" }, { status: 404 })
       }
-      throw new Error(`GitHub API error: ${repoResponse.status}`)
+      if (repoResponse.status === 403) {
+        return NextResponse.json({ error: "Access forbidden" }, { status: 403 })
+      }
+      console.error("GitHub API error:", repoResponse.status, repoResponse.statusText)
+      return NextResponse.json({ error: "Failed to fetch repository" }, { status: repoResponse.status })
     }
 
     const repository = await repoResponse.json()
     return NextResponse.json(repository)
   } catch (error) {
     console.error("Repository API error:", error)
-    return NextResponse.json({ error: "Failed to fetch repository" }, { status: 500 })
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
 }
