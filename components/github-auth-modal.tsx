@@ -3,116 +3,106 @@
 import { useState } from "react"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
-import { Github } from "lucide-react"
-import { useToast } from "@/hooks/use-toast"
+import { Github, Loader2 } from "lucide-react"
 
 interface GitHubAuthModalProps {
-  open: boolean
+  isOpen: boolean
   onOpenChange: (open: boolean) => void
 }
 
-export function GitHubAuthModal({ open, onOpenChange }: GitHubAuthModalProps) {
-  const { toast } = useToast()
-  const [loading, setLoading] = useState(false)
+export function GitHubAuthModal({ isOpen, onOpenChange }: GitHubAuthModalProps) {
+  const [isLoading, setIsLoading] = useState(false)
 
-  const handleAuth = async () => {
+  const handleGitHubAuth = async () => {
+    setIsLoading(true)
     try {
-      setLoading(true)
       const response = await fetch("/api/auth/github")
+      const data = await response.json()
 
-      if (!response.ok) {
-        throw new Error("Failed to initiate GitHub authentication")
-      }
+      if (data.url) {
+        // Open GitHub OAuth in a popup
+        const popup = window.open(data.url, "github-auth", "width=600,height=700,scrollbars=yes,resizable=yes")
 
-      const { url } = await response.json()
-
-      // Open GitHub auth in a popup
-      const width = 600
-      const height = 700
-      const left = window.screenX + (window.outerWidth - width) / 2
-      const top = window.screenY + (window.outerHeight - height) / 2
-
-      const popup = window.open(
-        url,
-        "github-auth",
-        `width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=yes,status=yes`,
-      )
-
-      if (!popup) {
-        toast({
-          title: "Popup Blocked",
-          description: "Please allow popups for this site and try again.",
-          variant: "destructive",
-        })
-        return
-      }
-
-      // Check if the popup is closed or redirected to our callback URL
-      const checkPopup = setInterval(() => {
-        try {
-          // If popup is closed
-          if (popup.closed) {
-            clearInterval(checkPopup)
-            setLoading(false)
-            // Check if we have a session after popup is closed
-            checkSession()
+        // Listen for the popup to close or send a message
+        const checkClosed = setInterval(() => {
+          if (popup?.closed) {
+            clearInterval(checkClosed)
+            setIsLoading(false)
+            // Refresh the page to update auth state
+            window.location.reload()
           }
-        } catch (error) {
-          // This can happen if the popup navigates to a different origin
-          // We'll just continue checking
+        }, 1000)
+
+        // Listen for messages from the popup
+        const messageListener = (event: MessageEvent) => {
+          if (event.origin !== window.location.origin) return
+
+          if (event.data.type === "GITHUB_AUTH_SUCCESS") {
+            popup?.close()
+            clearInterval(checkClosed)
+            setIsLoading(false)
+            onOpenChange(false)
+            window.location.reload()
+          } else if (event.data.type === "GITHUB_AUTH_ERROR") {
+            popup?.close()
+            clearInterval(checkClosed)
+            setIsLoading(false)
+            console.error("GitHub auth error:", event.data.error)
+          }
         }
-      }, 500)
-    } catch (error) {
-      console.error("Error during GitHub authentication:", error)
-      toast({
-        title: "Authentication Error",
-        description: "Failed to authenticate with GitHub. Please try again.",
-        variant: "destructive",
-      })
-      setLoading(false)
-    }
-  }
 
-  const checkSession = async () => {
-    try {
-      const response = await fetch("/api/auth/session")
+        window.addEventListener("message", messageListener)
 
-      if (response.ok) {
-        const session = await response.json()
-
-        if (session && session.user) {
-          // Successfully authenticated
-          toast({
-            title: "Authentication Successful",
-            description: `Welcome, ${session.user.name || session.user.login}!`,
-          })
-          onOpenChange(false)
-          // Redirect to dashboard
-          window.location.href = "/dashboard"
-        }
+        // Cleanup
+        setTimeout(() => {
+          window.removeEventListener("message", messageListener)
+          if (!popup?.closed) {
+            popup?.close()
+            clearInterval(checkClosed)
+            setIsLoading(false)
+          }
+        }, 300000) // 5 minutes timeout
       }
     } catch (error) {
-      console.error("Error checking session:", error)
+      console.error("Auth error:", error)
+      setIsLoading(false)
     }
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Connect with GitHub</DialogTitle>
+          <DialogTitle className="flex items-center gap-2">
+            <Github className="h-5 w-5" />
+            Connect to GitHub
+          </DialogTitle>
           <DialogDescription>
-            Connect your GitHub account to analyze your repositories and generate documentation.
+            Connect your GitHub account to access your repositories and generate CI/CD pipelines and documentation.
           </DialogDescription>
         </DialogHeader>
-        <div className="flex flex-col gap-4 py-4">
-          <Button onClick={handleAuth} disabled={loading} className="w-full">
-            <Github className="mr-2 h-4 w-4" />
-            {loading ? "Connecting..." : "Connect GitHub Account"}
+        <div className="flex flex-col gap-4">
+          <div className="bg-muted/50 p-4 rounded-lg">
+            <h4 className="font-medium mb-2">What we'll access:</h4>
+            <ul className="text-sm text-muted-foreground space-y-1">
+              <li>• Read access to your repositories</li>
+              <li>• Your public profile information</li>
+              <li>• Repository files and structure</li>
+            </ul>
+          </div>
+          <Button onClick={handleGitHubAuth} disabled={isLoading} className="w-full">
+            {isLoading ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Connecting...
+              </>
+            ) : (
+              <>
+                <Github className="mr-2 h-4 w-4" />
+                Continue with GitHub
+              </>
+            )}
           </Button>
-          <p className="text-xs text-muted-foreground text-center">
-            We only request read access to your repositories. You can revoke access at any time.
-          </p>
         </div>
       </DialogContent>
     </Dialog>
