@@ -12,7 +12,7 @@ export interface UserSession {
 }
 
 export async function getUserSession(): Promise<UserSession | null> {
-  const cookieStore = cookies()
+  const cookieStore = await cookies()
   const sessionCookie = cookieStore.get("github_session")
 
   if (!sessionCookie) {
