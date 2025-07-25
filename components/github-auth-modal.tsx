@@ -1,84 +1,49 @@
 "use client"
 
+import type React from "react"
+
 import { useState } from "react"
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import { Github, Shield, Eye, GitFork, Loader2 } from "lucide-react"
+import { Github } from "lucide-react"
 
 interface GitHubAuthModalProps {
-  isOpen: boolean
-  onOpenChange: (open: boolean) => void
+  children: React.ReactNode
 }
 
-export function GitHubAuthModal({ isOpen, onOpenChange }: GitHubAuthModalProps) {
-  const [isLoading, setIsLoading] = useState(false)
+export function GitHubAuthModal({ children }: GitHubAuthModalProps) {
+  const [isOpen, setIsOpen] = useState(false)
 
   const handleGitHubAuth = () => {
-    setIsLoading(true)
     // Direct redirect to GitHub OAuth
     window.location.href = "/api/auth/github"
   }
 
   return (
-    <Dialog open={isOpen} onOpenChange={onOpenChange}>
+    <Dialog open={isOpen} onOpenChange={setIsOpen}>
+      <DialogTrigger asChild>{children}</DialogTrigger>
       <DialogContent className="sm:max-w-md">
-        <DialogHeader className="text-center">
-          <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
-            <Github className="w-8 h-8 text-primary" />
-          </div>
-          <DialogTitle className="text-2xl">Connect with GitHub</DialogTitle>
-          <DialogDescription>Securely connect your GitHub account to access your repositories</DialogDescription>
+        <DialogHeader>
+          <DialogTitle>Connect to GitHub</DialogTitle>
+          <DialogDescription>
+            Connect your GitHub account to analyze repositories and generate CI/CD pipelines.
+          </DialogDescription>
         </DialogHeader>
-
-        <div className="space-y-6 py-4">
-          <div className="space-y-3">
-            <div className="flex items-center space-x-3 text-sm">
-              <Eye className="w-4 h-4 text-green-500" />
-              <span>Read public and private repositories</span>
-            </div>
-            <div className="flex items-center space-x-3 text-sm">
-              <GitFork className="w-4 h-4 text-green-500" />
-              <span>Access repository metadata and files</span>
-            </div>
-            <div className="flex items-center space-x-3 text-sm">
-              <Shield className="w-4 h-4 text-green-500" />
-              <span>Secure OAuth2 authentication</span>
-            </div>
-          </div>
-
-          <div className="bg-muted/50 p-4 rounded-lg">
-            <div className="flex items-start space-x-2">
-              <Shield className="w-4 h-4 text-primary mt-0.5" />
-              <div className="text-sm">
-                <p className="font-medium mb-1">Your data is secure</p>
-                <p className="text-muted-foreground">
-                  We only read repository files necessary for analysis. No code is stored permanently.
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <Button onClick={handleGitHubAuth} disabled={isLoading} className="w-full" size="lg">
-            {isLoading ? (
-              <>
-                <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                Connecting...
-              </>
-            ) : (
-              <>
-                <Github className="w-5 h-5 mr-2" />
-                Continue with GitHub
-              </>
-            )}
+        <div className="flex flex-col gap-4">
+          <Button onClick={handleGitHubAuth} className="w-full">
+            <Github className="mr-2 h-4 w-4" />
+            Continue with GitHub
           </Button>
-
-          <div className="text-center">
-            <Badge variant="secondary" className="text-xs">
-              <Shield className="w-3 h-3 mr-1" />
-              OAuth2 Secured
-            </Badge>
-          </div>
+          <p className="text-xs text-muted-foreground text-center">
+            By connecting, you agree to our terms of service and privacy policy.
+          </p>
         </div>
       </DialogContent>
     </Dialog>
