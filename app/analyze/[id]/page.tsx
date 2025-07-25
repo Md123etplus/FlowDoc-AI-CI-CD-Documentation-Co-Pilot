@@ -12,13 +12,16 @@ import { useToast } from "@/hooks/use-toast"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 
 interface Repository {
-  id: string
+  id: number
   name: string
+  full_name: string
   owner: {
     login: string
+    avatar_url: string
   }
-  description: string
-  defaultBranch: string
+  description: string | null
+  default_branch: string
+  language: string | null
 }
 
 interface FileContent {
@@ -42,16 +45,25 @@ export default function AnalyzePage() {
   const [cicdOutput, setCicdOutput] = useState<string | null>(null)
   const [docsOutput, setDocsOutput] = useState<string | null>(null)
 
+  // Parse the repository ID from the URL
+  // The ID format is owner/repo
   const repoId = params.id as string
+  const [owner, repo] = repoId ? repoId.split("/") : [null, null]
 
   useEffect(() => {
     async function fetchRepositoryData() {
+      if (!owner || !repo) {
+        setError("Invalid repository ID")
+        setLoading(false)
+        return
+      }
+
       try {
         setLoading(true)
         setError(null)
 
         // Fetch repository details
-        const repoResponse = await fetch(`/api/github/repositories/${repoId}`)
+        const repoResponse = await fetch(`/api/github/repositories/${owner}/${repo}`)
 
         if (!repoResponse.ok) {
           throw new Error("Failed to fetch repository details")
@@ -61,7 +73,7 @@ export default function AnalyzePage() {
         setRepository(repoData)
 
         // Fetch repository files
-        const filesResponse = await fetch(`/api/github/repositories/${repoData.owner.login}/${repoData.name}/files`)
+        const filesResponse = await fetch(`/api/github/repositories/${owner}/${repo}/files`)
 
         if (!filesResponse.ok) {
           throw new Error("Failed to fetch repository files")
@@ -77,10 +89,10 @@ export default function AnalyzePage() {
       }
     }
 
-    if (repoId) {
+    if (owner && repo) {
       fetchRepositoryData()
     }
-  }, [repoId])
+  }, [owner, repo])
 
   const handleGenerateCICD = async () => {
     setGeneratingCICD(true)
@@ -300,14 +312,14 @@ Contributions are welcome! Please feel free to submit a Pull Request.`)
     <div className="container py-6 space-y-6">
       <div className="flex items-center justify-between">
         <div className="flex items-center space-x-4">
-          <Button variant="ghost" size="icon" onClick={() => router.back()}>
+          <Button variant="ghost" size="icon" onClick={() => router.push("/dashboard")}>
             <ArrowLeft className="h-4 w-4" />
           </Button>
           <div>
             <h1 className="text-2xl font-bold">{repository?.name}</h1>
             <div className="flex items-center text-sm text-muted-foreground">
               <GitBranch className="mr-1 h-3 w-3" />
-              <span>{repository?.defaultBranch || "main"}</span>
+              <span>{repository?.default_branch || "main"}</span>
             </div>
           </div>
         </div>

@@ -1,148 +1,119 @@
 "use client"
 
 import { useState } from "react"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
-import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Github, Loader2, AlertCircle, CheckCircle } from "lucide-react"
+import { Github } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 
 interface GitHubAuthModalProps {
-  isOpen: boolean
+  open: boolean
   onOpenChange: (open: boolean) => void
-  onSuccess?: () => void
 }
 
-export function GitHubAuthModal({ isOpen, onOpenChange, onSuccess }: GitHubAuthModalProps) {
-  const [isAuthenticating, setIsAuthenticating] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+export function GitHubAuthModal({ open, onOpenChange }: GitHubAuthModalProps) {
   const { toast } = useToast()
+  const [loading, setLoading] = useState(false)
 
-  const handleGitHubAuth = async () => {
+  const handleAuth = async () => {
     try {
-      setIsAuthenticating(true)
-      setError(null)
-
-      // Get the authorization URL from our API
+      setLoading(true)
       const response = await fetch("/api/auth/github")
 
       if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || "Failed to initiate GitHub authentication")
+        throw new Error("Failed to initiate GitHub authentication")
       }
 
-      const { authUrl } = await response.json()
+      const { url } = await response.json()
 
-      // Open popup window for GitHub OAuth
-      const popup = window.open(authUrl, "github-auth", "width=600,height=700,scrollbars=yes,resizable=yes")
+      // Open GitHub auth in a popup
+      const width = 600
+      const height = 700
+      const left = window.screenX + (window.outerWidth - width) / 2
+      const top = window.screenY + (window.outerHeight - height) / 2
+
+      const popup = window.open(
+        url,
+        "github-auth",
+        `width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=yes,status=yes`,
+      )
 
       if (!popup) {
-        throw new Error("Popup blocked. Please allow popups for this site and try again.")
+        toast({
+          title: "Popup Blocked",
+          description: "Please allow popups for this site and try again.",
+          variant: "destructive",
+        })
+        return
       }
 
-      // Listen for messages from the popup
-      const handleMessage = (event: MessageEvent) => {
-        if (event.origin !== window.location.origin) return
+      // Check if the popup is closed or redirected to our callback URL
+      const checkPopup = setInterval(() => {
+        try {
+          // If popup is closed
+          if (popup.closed) {
+            clearInterval(checkPopup)
+            setLoading(false)
+            // Check if we have a session after popup is closed
+            checkSession()
+          }
+        } catch (error) {
+          // This can happen if the popup navigates to a different origin
+          // We'll just continue checking
+        }
+      }, 500)
+    } catch (error) {
+      console.error("Error during GitHub authentication:", error)
+      toast({
+        title: "Authentication Error",
+        description: "Failed to authenticate with GitHub. Please try again.",
+        variant: "destructive",
+      })
+      setLoading(false)
+    }
+  }
 
-        if (event.data.type === "GITHUB_AUTH_SUCCESS") {
-          popup.close()
-          setIsAuthenticating(false)
-          onOpenChange(false)
+  const checkSession = async () => {
+    try {
+      const response = await fetch("/api/auth/session")
+
+      if (response.ok) {
+        const session = await response.json()
+
+        if (session && session.user) {
+          // Successfully authenticated
           toast({
-            title: "Authentication successful",
-            description: "You have been successfully authenticated with GitHub.",
+            title: "Authentication Successful",
+            description: `Welcome, ${session.user.name || session.user.login}!`,
           })
-          onSuccess?.()
-          window.location.reload() // Refresh to update user state
-        } else if (event.data.type === "GITHUB_AUTH_ERROR") {
-          popup.close()
-          setIsAuthenticating(false)
-          setError(event.data.error || "Authentication failed")
+          onOpenChange(false)
+          // Redirect to dashboard
+          window.location.href = "/dashboard"
         }
       }
-
-      window.addEventListener("message", handleMessage)
-
-      // Check if popup was closed manually
-      const checkClosed = setInterval(() => {
-        if (popup.closed) {
-          clearInterval(checkClosed)
-          window.removeEventListener("message", handleMessage)
-          setIsAuthenticating(false)
-        }
-      }, 1000)
-    } catch (err) {
-      console.error("GitHub auth error:", err)
-      setError(err instanceof Error ? err.message : "An unexpected error occurred")
-      setIsAuthenticating(false)
+    } catch (error) {
+      console.error("Error checking session:", error)
     }
   }
 
   return (
-    <Dialog open={isOpen} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Github className="h-5 w-5" />
-            Connect to GitHub
-          </DialogTitle>
+          <DialogTitle>Connect with GitHub</DialogTitle>
           <DialogDescription>
-            Connect your GitHub account to access your repositories and generate CI/CD pipelines and documentation.
+            Connect your GitHub account to analyze your repositories and generate documentation.
           </DialogDescription>
         </DialogHeader>
-
-        <div className="space-y-4">
-          {error && (
-            <Alert variant="destructive">
-              <AlertCircle className="h-4 w-4" />
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-          )}
-
-          <div className="space-y-2">
-            <h4 className="text-sm font-medium">This app will be able to:</h4>
-            <ul className="text-sm text-muted-foreground space-y-1">
-              <li className="flex items-center gap-2">
-                <CheckCircle className="h-3 w-3 text-green-500" />
-                Read your public and private repositories
-              </li>
-              <li className="flex items-center gap-2">
-                <CheckCircle className="h-3 w-3 text-green-500" />
-                Access repository files and metadata
-              </li>
-              <li className="flex items-center gap-2">
-                <CheckCircle className="h-3 w-3 text-green-500" />
-                Read your email address
-              </li>
-            </ul>
-          </div>
+        <div className="flex flex-col gap-4 py-4">
+          <Button onClick={handleAuth} disabled={loading} className="w-full">
+            <Github className="mr-2 h-4 w-4" />
+            {loading ? "Connecting..." : "Connect GitHub Account"}
+          </Button>
+          <p className="text-xs text-muted-foreground text-center">
+            We only request read access to your repositories. You can revoke access at any time.
+          </p>
         </div>
-
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isAuthenticating}>
-            Cancel
-          </Button>
-          <Button onClick={handleGitHubAuth} disabled={isAuthenticating}>
-            {isAuthenticating ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Authenticating...
-              </>
-            ) : (
-              <>
-                <Github className="mr-2 h-4 w-4" />
-                Connect GitHub
-              </>
-            )}
-          </Button>
-        </DialogFooter>
       </DialogContent>
     </Dialog>
   )
