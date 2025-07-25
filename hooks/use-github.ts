@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useEffect, useState } from "react"
 
 interface GitHubUser {
   id: number
@@ -8,31 +8,26 @@ interface GitHubUser {
   name: string | null
   email: string | null
   avatar_url: string
+  public_repos: number
+  followers: number
+  following: number
 }
 
 interface GitHubRepository {
-  id: number
+  id: string
   name: string
-  full_name: string
+  fullName: string
   owner: {
     login: string
-    avatar_url: string
+    avatarUrl: string
   }
   description: string | null
-  private: boolean
   language: string | null
-  stargazers_count: number
-  forks_count: number
-  updated_at: string
-  default_branch: string
-}
-
-interface GitHubFile {
-  name: string
-  path: string
-  content: string
-  size: number
-  type: string
+  stargazersCount: number
+  forksCount: number
+  updatedAt: string
+  visibility: string
+  private: boolean
 }
 
 export function useGitHubUser() {
@@ -43,16 +38,24 @@ export function useGitHubUser() {
   useEffect(() => {
     async function fetchUser() {
       try {
+        setLoading(true)
+        setError(null)
+
         const response = await fetch("/api/github/user")
 
-        if (response.ok) {
-          const userData = await response.json()
-          setUser(userData)
-        } else if (response.status !== 401) {
-          throw new Error("Failed to fetch user")
+        if (!response.ok) {
+          if (response.status === 401) {
+            setUser(null)
+            return
+          }
+          throw new Error("Failed to fetch user data")
         }
+
+        const userData = await response.json()
+        setUser(userData)
       } catch (err) {
-        setError(err instanceof Error ? err.message : "An error occurred")
+        console.error("Error fetching user:", err)
+        setError(err instanceof Error ? err.message : "An unknown error occurred")
       } finally {
         setLoading(false)
       }
@@ -69,68 +72,34 @@ export function useGitHubRepositories() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const fetchRepositories = async () => {
-    try {
-      setLoading(true)
-      setError(null)
-
-      const response = await fetch("/api/github/repositories?per_page=50")
-
-      if (!response.ok) {
-        throw new Error("Failed to fetch repositories")
-      }
-
-      const data = await response.json()
-      setRepositories(data)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "An error occurred")
-    } finally {
-      setLoading(false)
-    }
-  }
-
   useEffect(() => {
-    fetchRepositories()
-  }, [])
-
-  return { repositories, loading, error, refetch: fetchRepositories }
-}
-
-export function useGitHubRepository(owner: string, repo: string) {
-  const [repository, setRepository] = useState<GitHubRepository | null>(null)
-  const [files, setFiles] = useState<{ workflows: GitHubFile[]; documentation: GitHubFile[] }>({
-    workflows: [],
-    documentation: [],
-  })
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    async function fetchRepository() {
-      if (!owner || !repo) return
-
+    async function fetchRepositories() {
       try {
         setLoading(true)
         setError(null)
 
-        const response = await fetch(`/api/github/repositories/${owner}/${repo}`)
+        const response = await fetch("/api/github/repositories?per_page=50")
 
         if (!response.ok) {
-          throw new Error("Failed to fetch repository")
+          if (response.status === 401) {
+            setRepositories([])
+            return
+          }
+          throw new Error("Failed to fetch repositories")
         }
 
-        const data = await response.json()
-        setRepository(data.repository)
-        setFiles(data.files)
+        const repoData = await response.json()
+        setRepositories(repoData)
       } catch (err) {
-        setError(err instanceof Error ? err.message : "An error occurred")
+        console.error("Error fetching repositories:", err)
+        setError(err instanceof Error ? err.message : "An unknown error occurred")
       } finally {
         setLoading(false)
       }
     }
 
-    fetchRepository()
-  }, [owner, repo])
+    fetchRepositories()
+  }, [])
 
-  return { repository, files, loading, error }
+  return { repositories, loading, error }
 }

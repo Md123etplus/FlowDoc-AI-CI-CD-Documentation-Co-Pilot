@@ -6,15 +6,12 @@ export async function GET() {
     const session = await getUserSession()
 
     if (!session) {
-      return NextResponse.json({ authenticated: false })
+      return NextResponse.json({ authenticated: false }, { status: 200 })
     }
 
-    return NextResponse.json({
-      authenticated: true,
-      user: session.user,
-    })
+    return NextResponse.json(session)
   } catch (error) {
-    console.error("Session check error:", error)
-    return NextResponse.json({ authenticated: false })
+    console.error("Session API error:", error)
+    return NextResponse.json({ authenticated: false }, { status: 200 })
   }
 }
