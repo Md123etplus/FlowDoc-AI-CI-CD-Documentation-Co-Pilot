@@ -1,227 +1,240 @@
 "use client"
 
-import { useState } from "react"
-import { DashboardLayout } from "@/components/dashboard-layout"
+import { useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { Github, Search, Star, GitFork, Clock, Plus, ArrowRight, RefreshCw } from "lucide-react"
-import Link from "next/link"
-import { useGitHubRepositories } from "@/hooks/use-github"
+import { Skeleton } from "@/components/ui/skeleton"
+import { Badge } from "@/components/ui/badge"
+import { GitFork, GitPullRequest, Search, Star } from "lucide-react"
+import { useToast } from "@/hooks/use-toast"
+
+interface Repository {
+  id: string
+  name: string
+  fullName: string
+  owner: {
+    login: string
+    avatarUrl: string
+  }
+  description: string | null
+  language: string | null
+  stargazersCount: number
+  forksCount: number
+  updatedAt: string
+  visibility: string
+}
 
 export default function DashboardPage() {
+  const router = useRouter()
+  const { toast } = useToast()
+  const [repositories, setRepositories] = useState<Repository[]>([])
+  const [filteredRepositories, setFilteredRepositories] = useState<Repository[]>([])
+  const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState("")
-  const [selectedFilter, setSelectedFilter] = useState("all")
-  const { repositories, loading, error, refetch } = useGitHubRepositories()
+  const [error, setError] = useState<string | null>(null)
 
-  const filteredRepos = repositories.filter((repo) => {
-    const matchesSearch =
-      repo.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (repo.description?.toLowerCase().includes(searchQuery.toLowerCase()) ?? false)
+  useEffect(() => {
+    async function fetchRepositories() {
+      try {
+        setLoading(true)
+        setError(null)
 
-    // For now, we'll treat all repos as "unanalyzed" since we don't have analysis tracking yet
-    if (selectedFilter === "analyzed") return false // matchesSearch && repo.analyzed
-    if (selectedFilter === "unanalyzed") return matchesSearch // && !repo.analyzed
-    return matchesSearch
-  })
+        const response = await fetch("/api/github/repositories?per_page=20")
 
-  const formatTimeAgo = (dateString: string) => {
+        if (!response.ok) {
+          if (response.status === 401) {
+            // Redirect to login if unauthorized
+            router.push("/")
+            return
+          }
+          throw new Error("Failed to fetch repositories")
+        }
+
+        const data = await response.json()
+        setRepositories(data)
+        setFilteredRepositories(data)
+      } catch (err) {
+        console.error("Error fetching repositories:", err)
+        setError(err instanceof Error ? err.message : "An unknown error occurred")
+        toast({
+          title: "Error",
+          description: "Failed to load repositories. Please try again.",
+          variant: "destructive",
+        })
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchRepositories()
+  }, [router, toast])
+
+  useEffect(() => {
+    if (searchQuery.trim() === "") {
+      setFilteredRepositories(repositories)
+    } else {
+      const query = searchQuery.toLowerCase()
+      const filtered = repositories.filter(
+        (repo) =>
+          repo.name.toLowerCase().includes(query) ||
+          (repo.description && repo.description.toLowerCase().includes(query)) ||
+          (repo.language && repo.language.toLowerCase().includes(query)),
+      )
+      setFilteredRepositories(filtered)
+    }
+  }, [searchQuery, repositories])
+
+  const handleAnalyzeRepo = (repo: Repository) => {
+    router.push(`/analyze/${repo.fullName}`)
+  }
+
+  const formatDate = (dateString: string) => {
     const date = new Date(dateString)
-    const now = new Date()
-    const diffInHours = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60))
-
-    if (diffInHours < 1) return "Just now"
-    if (diffInHours < 24) return `${diffInHours} hours ago`
-    if (diffInHours < 48) return "1 day ago"
-    if (diffInHours < 168) return `${Math.floor(diffInHours / 24)} days ago`
-    return `${Math.floor(diffInHours / 168)} weeks ago`
-  }
-
-  if (loading) {
-    return (
-      <DashboardLayout>
-        <div className="space-y-8">
-          <div className="flex justify-between items-center">
-            <div>
-              <h1 className="text-3xl font-bold">Your Repositories</h1>
-              <p className="text-muted-foreground">Loading your repositories...</p>
-            </div>
-          </div>
-          <div className="grid gap-6">
-            {[...Array(6)].map((_, i) => (
-              <Card key={i} className="animate-pulse">
-                <CardHeader>
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-center space-x-3">
-                      <div className="w-10 h-10 bg-muted rounded-lg" />
-                      <div className="space-y-2">
-                        <div className="h-4 bg-muted rounded w-32" />
-                        <div className="h-3 bg-muted rounded w-48" />
-                      </div>
-                    </div>
-                    <div className="h-9 bg-muted rounded w-20" />
-                  </div>
-                </CardHeader>
-              </Card>
-            ))}
-          </div>
-        </div>
-      </DashboardLayout>
-    )
-  }
-
-  if (error) {
-    return (
-      <DashboardLayout>
-        <div className="space-y-8">
-          <div className="text-center py-12">
-            <Github className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-            <h3 className="text-lg font-semibold mb-2">Failed to load repositories</h3>
-            <p className="text-muted-foreground mb-4">{error}</p>
-            <Button onClick={refetch}>
-              <RefreshCw className="w-4 h-4 mr-2" />
-              Try Again
-            </Button>
-          </div>
-        </div>
-      </DashboardLayout>
-    )
+    return new Intl.DateTimeFormat("en-US", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    }).format(date)
   }
 
   return (
-    <DashboardLayout>
-      <div className="space-y-8">
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-          <div>
-            <h1 className="text-3xl font-bold">Your Repositories</h1>
-            <p className="text-muted-foreground">Select a repository to generate CI/CD pipelines and documentation</p>
-          </div>
-          <Button onClick={refetch}>
-            <Plus className="w-4 h-4 mr-2" />
-            Refresh Repos
-          </Button>
+    <div className="space-y-6">
+      <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Repositories</h1>
+          <p className="text-muted-foreground">
+            Select a repository to analyze and generate documentation or CI/CD pipelines.
+          </p>
         </div>
-
-        {/* Search and Filter */}
-        <div className="flex flex-col sm:flex-row gap-4">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
-            <Input
-              placeholder="Search repositories..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10"
-            />
-          </div>
-          <div className="flex gap-2">
-            <Button
-              variant={selectedFilter === "all" ? "default" : "outline"}
-              size="sm"
-              onClick={() => setSelectedFilter("all")}
-            >
-              All ({repositories.length})
-            </Button>
-            <Button
-              variant={selectedFilter === "analyzed" ? "default" : "outline"}
-              size="sm"
-              onClick={() => setSelectedFilter("analyzed")}
-            >
-              Analyzed (0)
-            </Button>
-            <Button
-              variant={selectedFilter === "unanalyzed" ? "default" : "outline"}
-              size="sm"
-              onClick={() => setSelectedFilter("unanalyzed")}
-            >
-              New ({repositories.length})
-            </Button>
-          </div>
+        <div className="relative w-full sm:w-auto">
+          <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+          <Input
+            type="search"
+            placeholder="Search repositories..."
+            className="w-full sm:w-[250px] pl-8"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
         </div>
+      </div>
 
-        {/* Repository Grid */}
-        <div className="grid gap-6">
-          {filteredRepos.map((repo) => (
-            <Card key={repo.id} className="hover:shadow-md transition-shadow">
-              <CardHeader>
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center space-x-3">
-                    <div className="w-10 h-10 bg-primary/10 rounded-lg flex items-center justify-center">
-                      <Github className="w-5 h-5 text-primary" />
-                    </div>
-                    <div>
-                      <div className="flex items-center space-x-2">
-                        <CardTitle className="text-lg">{repo.name}</CardTitle>
-                        {repo.private && (
-                          <Badge variant="secondary" className="text-xs">
-                            Private
-                          </Badge>
-                        )}
-                      </div>
-                      <CardDescription className="mt-1">
-                        {repo.description || "No description available"}
-                      </CardDescription>
-                    </div>
-                  </div>
-                  <Link href={`/analyze/${repo.full_name}`}>
-                    <Button>
-                      Analyze
-                      <ArrowRight className="w-4 h-4 ml-2" />
-                    </Button>
-                  </Link>
-                </div>
+      {loading ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <Card key={i}>
+              <CardHeader className="pb-2">
+                <Skeleton className="h-5 w-3/4 mb-2" />
+                <Skeleton className="h-4 w-1/2" />
               </CardHeader>
               <CardContent>
-                <div className="flex items-center justify-between text-sm text-muted-foreground">
-                  <div className="flex items-center space-x-4">
-                    {repo.language && (
-                      <div className="flex items-center space-x-1">
-                        <div
-                          className={`w-3 h-3 rounded-full ${
-                            repo.language === "TypeScript"
-                              ? "bg-blue-500"
-                              : repo.language === "JavaScript"
-                                ? "bg-yellow-500"
-                                : repo.language === "Python"
-                                  ? "bg-green-500"
-                                  : repo.language === "Java"
-                                    ? "bg-red-500"
-                                    : "bg-gray-500"
-                          }`}
-                        />
-                        <span>{repo.language}</span>
-                      </div>
-                    )}
-                    <div className="flex items-center space-x-1">
-                      <Star className="w-4 h-4" />
-                      <span>{repo.stargazers_count}</span>
-                    </div>
-                    <div className="flex items-center space-x-1">
-                      <GitFork className="w-4 h-4" />
-                      <span>{repo.forks_count}</span>
-                    </div>
-                  </div>
-                  <div className="flex items-center space-x-1">
-                    <Clock className="w-4 h-4" />
-                    <span>Updated {formatTimeAgo(repo.updated_at)}</span>
-                  </div>
-                </div>
+                <Skeleton className="h-4 w-full mb-2" />
+                <Skeleton className="h-4 w-2/3" />
               </CardContent>
+              <CardFooter>
+                <Skeleton className="h-9 w-full" />
+              </CardFooter>
             </Card>
           ))}
         </div>
-
-        {filteredRepos.length === 0 && (
-          <div className="text-center py-12">
-            <Github className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-            <h3 className="text-lg font-semibold mb-2">No repositories found</h3>
-            <p className="text-muted-foreground">
-              {searchQuery ? "Try adjusting your search query" : "No repositories match the selected filter"}
-            </p>
-          </div>
-        )}
-      </div>
-    </DashboardLayout>
+      ) : error ? (
+        <Card>
+          <CardContent className="pt-6">
+            <div className="text-center">
+              <p className="text-muted-foreground">{error}</p>
+              <Button variant="outline" className="mt-4 bg-transparent" onClick={() => router.push("/")}>
+                Return to Home
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      ) : filteredRepositories.length === 0 ? (
+        <Card>
+          <CardContent className="pt-6">
+            <div className="text-center">
+              <p className="text-muted-foreground">
+                {searchQuery
+                  ? "No repositories match your search criteria."
+                  : "No repositories found. Connect your GitHub account to see your repositories."}
+              </p>
+              {searchQuery && (
+                <Button variant="outline" className="mt-4 bg-transparent" onClick={() => setSearchQuery("")}>
+                  Clear Search
+                </Button>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {filteredRepositories.map((repo) => (
+            <Card key={repo.id}>
+              <CardHeader className="pb-2">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <CardTitle className="text-lg">{repo.name}</CardTitle>
+                    <CardDescription>{repo.owner.login}</CardDescription>
+                  </div>
+                  <Badge variant={repo.visibility === "public" ? "secondary" : "outline"}>{repo.visibility}</Badge>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-muted-foreground line-clamp-2 h-10">
+                  {repo.description || "No description provided"}
+                </p>
+                <div className="flex items-center mt-4 space-x-4 text-xs text-muted-foreground">
+                  {repo.language && (
+                    <div className="flex items-center">
+                      <div
+                        className="w-2 h-2 rounded-full mr-1"
+                        style={{
+                          backgroundColor:
+                            repo.language === "JavaScript"
+                              ? "#f1e05a"
+                              : repo.language === "TypeScript"
+                                ? "#3178c6"
+                                : repo.language === "Python"
+                                  ? "#3572A5"
+                                  : repo.language === "Java"
+                                    ? "#b07219"
+                                    : repo.language === "Go"
+                                      ? "#00ADD8"
+                                      : repo.language === "Ruby"
+                                        ? "#701516"
+                                        : repo.language === "PHP"
+                                          ? "#4F5D95"
+                                          : repo.language === "C#"
+                                            ? "#178600"
+                                            : repo.language === "C++"
+                                              ? "#f34b7d"
+                                              : "#8257e5",
+                        }}
+                      />
+                      {repo.language}
+                    </div>
+                  )}
+                  <div className="flex items-center">
+                    <Star className="w-3 h-3 mr-1" />
+                    {repo.stargazersCount}
+                  </div>
+                  <div className="flex items-center">
+                    <GitFork className="w-3 h-3 mr-1" />
+                    {repo.forksCount}
+                  </div>
+                  <div className="hidden sm:block">Updated {formatDate(repo.updatedAt)}</div>
+                </div>
+              </CardContent>
+              <CardFooter>
+                <Button className="w-full" onClick={() => handleAnalyzeRepo(repo)}>
+                  <GitPullRequest className="w-4 h-4 mr-2" />
+                  Analyze Repository
+                </Button>
+              </CardFooter>
+            </Card>
+          ))}
+        </div>
+      )}
+    </div>
   )
 }
