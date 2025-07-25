@@ -8,11 +8,11 @@ export async function GET(request: NextRequest) {
     const error = searchParams.get("error")
 
     if (error) {
-      return NextResponse.redirect(new URL("/auth/error?error=" + error, request.url))
+      return NextResponse.redirect(`${process.env.NEXTAUTH_URL}/auth/error?error=${error}`)
     }
 
     if (!code) {
-      return NextResponse.redirect(new URL("/auth/error?error=no_code", request.url))
+      return NextResponse.redirect(`${process.env.NEXTAUTH_URL}/auth/error?error=no_code`)
     }
 
     // Exchange code for access token
@@ -39,25 +39,23 @@ export async function GET(request: NextRequest) {
       throw new Error(tokenData.error_description || tokenData.error)
     }
 
-    const accessToken = tokenData.access_token
-
-    // Fetch user data
+    // Get user information
     const userResponse = await fetch("https://api.github.com/user", {
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        Authorization: `Bearer ${tokenData.access_token}`,
         Accept: "application/vnd.github.v3+json",
       },
     })
 
     if (!userResponse.ok) {
-      throw new Error("Failed to fetch user data")
+      throw new Error("Failed to fetch user information")
     }
 
     const userData = await userResponse.json()
 
-    // Set session
-    await setUserSession({
-      accessToken,
+    // Create session
+    const session = {
+      accessToken: tokenData.access_token,
       user: {
         id: userData.id,
         login: userData.login,
@@ -65,12 +63,15 @@ export async function GET(request: NextRequest) {
         email: userData.email,
         avatar_url: userData.avatar_url,
       },
-    })
+      authenticated: true,
+    }
+
+    await setUserSession(session)
 
     // Redirect to dashboard
-    return NextResponse.redirect(new URL("/dashboard", request.url))
+    return NextResponse.redirect(`${process.env.NEXTAUTH_URL}/dashboard`)
   } catch (error) {
     console.error("GitHub callback error:", error)
-    return NextResponse.redirect(new URL("/auth/error?error=callback_failed", request.url))
+    return NextResponse.redirect(`${process.env.NEXTAUTH_URL}/auth/error?error=callback_failed`)
   }
 }

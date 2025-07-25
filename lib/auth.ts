@@ -15,58 +15,50 @@ export interface UserSession {
 export async function getUserSession(): Promise<UserSession | null> {
   try {
     const cookieStore = await cookies()
-    const sessionCookie = cookieStore.get("github_session")
+    const sessionCookie = cookieStore.get("github-session")
 
-    if (!sessionCookie?.value) {
+    if (!sessionCookie) {
       return null
     }
 
     const session = JSON.parse(sessionCookie.value)
-
-    if (!session.accessToken || !session.user) {
-      return null
-    }
-
-    return {
-      ...session,
-      authenticated: true,
-    }
+    return session
   } catch (error) {
     console.error("Error getting user session:", error)
     return null
   }
 }
 
-export async function setUserSession(session: Omit<UserSession, "authenticated">) {
-  const cookieStore = await cookies()
-
-  cookieStore.set(
-    "github_session",
-    JSON.stringify({
-      ...session,
-      authenticated: true,
-    }),
-    {
+export async function setUserSession(session: UserSession): Promise<void> {
+  try {
+    const cookieStore = await cookies()
+    cookieStore.set("github-session", JSON.stringify(session), {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
       maxAge: 60 * 60 * 24 * 7, // 7 days
       path: "/",
-    },
-  )
+    })
+  } catch (error) {
+    console.error("Error setting user session:", error)
+  }
 }
 
-export async function clearUserSession() {
-  const cookieStore = await cookies()
-  cookieStore.delete("github_session")
+export async function clearUserSession(): Promise<void> {
+  try {
+    const cookieStore = await cookies()
+    cookieStore.delete("github-session")
+  } catch (error) {
+    console.error("Error clearing user session:", error)
+  }
 }
 
-export function generateGitHubAuthUrl(): string {
+export function getGitHubAuthUrl(): string {
   const clientId = process.env.GITHUB_CLIENT_ID
-  const redirectUri = process.env.GITHUB_REDIRECT_URI
+  const redirectUri = process.env.GITHUB_REDIRECT_URI || `${process.env.NEXTAUTH_URL}/api/auth/github/callback`
 
-  if (!clientId || !redirectUri) {
-    throw new Error("GitHub OAuth configuration is missing")
+  if (!clientId) {
+    throw new Error("GITHUB_CLIENT_ID is not configured")
   }
 
   const params = new URLSearchParams({

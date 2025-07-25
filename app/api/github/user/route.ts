@@ -9,7 +9,6 @@ export async function GET() {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    // Fetch fresh user data from GitHub
     const response = await fetch("https://api.github.com/user", {
       headers: {
         Authorization: `Bearer ${session.accessToken}`,
@@ -22,17 +21,7 @@ export async function GET() {
     }
 
     const userData = await response.json()
-
-    return NextResponse.json({
-      id: userData.id,
-      login: userData.login,
-      name: userData.name,
-      email: userData.email,
-      avatar_url: userData.avatar_url,
-      public_repos: userData.public_repos,
-      followers: userData.followers,
-      following: userData.following,
-    })
+    return NextResponse.json(userData)
   } catch (error) {
     console.error("Error fetching GitHub user:", error)
     return NextResponse.json({ error: "Failed to fetch user data" }, { status: 500 })
