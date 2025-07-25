@@ -5,18 +5,16 @@ export async function GET() {
   try {
     const session = await getUserSession()
 
+    if (!session) {
+      return NextResponse.json({ authenticated: false })
+    }
+
     return NextResponse.json({
-      authenticated: !!session,
-      user: session
-        ? {
-            login: session.user.login,
-            name: session.user.name,
-            avatar_url: session.user.avatar_url,
-          }
-        : null,
+      authenticated: true,
+      user: session.user,
     })
   } catch (error) {
     console.error("Error checking session:", error)
-    return NextResponse.json({ authenticated: false, error: "Failed to check authentication status" }, { status: 500 })
+    return NextResponse.json({ authenticated: false })
   }
 }

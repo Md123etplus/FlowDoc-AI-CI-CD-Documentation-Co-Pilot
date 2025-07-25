@@ -1,7 +1,39 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import type { GitHubRepo, GitHubUser, GitHubFile } from "@/lib/github"
+
+interface GitHubUser {
+  id: number
+  login: string
+  name: string | null
+  email: string | null
+  avatar_url: string
+}
+
+interface GitHubRepository {
+  id: number
+  name: string
+  full_name: string
+  owner: {
+    login: string
+    avatar_url: string
+  }
+  description: string | null
+  private: boolean
+  language: string | null
+  stargazers_count: number
+  forks_count: number
+  updated_at: string
+  default_branch: string
+}
+
+interface GitHubFile {
+  name: string
+  path: string
+  content: string
+  size: number
+  type: string
+}
 
 export function useGitHubUser() {
   const [user, setUser] = useState<GitHubUser | null>(null)
@@ -12,16 +44,15 @@ export function useGitHubUser() {
     async function fetchUser() {
       try {
         const response = await fetch("/api/github/user")
+
         if (response.ok) {
           const userData = await response.json()
           setUser(userData)
-        } else if (response.status === 401) {
-          setUser(null)
-        } else {
+        } else if (response.status !== 401) {
           throw new Error("Failed to fetch user")
         }
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Unknown error")
+        setError(err instanceof Error ? err.message : "An error occurred")
       } finally {
         setLoading(false)
       }
@@ -34,22 +65,25 @@ export function useGitHubUser() {
 }
 
 export function useGitHubRepositories() {
-  const [repositories, setRepositories] = useState<GitHubRepo[]>([])
+  const [repositories, setRepositories] = useState<GitHubRepository[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   const fetchRepositories = async () => {
     try {
       setLoading(true)
-      const response = await fetch("/api/github/repositories")
-      if (response.ok) {
-        const repos = await response.json()
-        setRepositories(repos)
-      } else {
+      setError(null)
+
+      const response = await fetch("/api/github/repositories?per_page=50")
+
+      if (!response.ok) {
         throw new Error("Failed to fetch repositories")
       }
+
+      const data = await response.json()
+      setRepositories(data)
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unknown error")
+      setError(err instanceof Error ? err.message : "An error occurred")
     } finally {
       setLoading(false)
     }
@@ -63,11 +97,11 @@ export function useGitHubRepositories() {
 }
 
 export function useGitHubRepository(owner: string, repo: string) {
-  const [repository, setRepository] = useState<GitHubRepo | null>(null)
-  const [files, setFiles] = useState<{
-    workflows: GitHubFile[]
-    documentation: GitHubFile[]
-  }>({ workflows: [], documentation: [] })
+  const [repository, setRepository] = useState<GitHubRepository | null>(null)
+  const [files, setFiles] = useState<{ workflows: GitHubFile[]; documentation: GitHubFile[] }>({
+    workflows: [],
+    documentation: [],
+  })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -77,16 +111,19 @@ export function useGitHubRepository(owner: string, repo: string) {
 
       try {
         setLoading(true)
+        setError(null)
+
         const response = await fetch(`/api/github/repositories/${owner}/${repo}`)
-        if (response.ok) {
-          const data = await response.json()
-          setRepository(data.repository)
-          setFiles(data.files)
-        } else {
+
+        if (!response.ok) {
           throw new Error("Failed to fetch repository")
         }
+
+        const data = await response.json()
+        setRepository(data.repository)
+        setFiles(data.files)
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Unknown error")
+        setError(err instanceof Error ? err.message : "An error occurred")
       } finally {
         setLoading(false)
       }

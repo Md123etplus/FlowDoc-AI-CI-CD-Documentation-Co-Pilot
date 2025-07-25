@@ -13,7 +13,7 @@ import { cn } from "@/lib/utils"
 
 interface DashboardLayoutProps {
   children: ReactNode
-  user?: {
+  user: {
     name: string | null
     login: string
     avatar_url: string
@@ -26,7 +26,7 @@ export function DashboardLayout({ children, user }: DashboardLayoutProps) {
 
   const navigation = [
     { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-    { name: "Repositories", href: "/repositories", icon: Github },
+    { name: "Repositories", href: "/dashboard", icon: Github },
     { name: "Generated Files", href: "/generated", icon: FileCode },
     { name: "History", href: "/history", icon: History },
     { name: "Settings", href: "/settings", icon: Settings },
@@ -121,12 +121,12 @@ export function DashboardLayout({ children, user }: DashboardLayoutProps) {
         <div className="hidden lg:flex lg:flex-col lg:w-64 lg:fixed lg:inset-y-0 border-r">
           <div className="flex-1 flex flex-col min-h-0">
             <div className="flex items-center h-16 px-4 border-b">
-              <div className="flex items-center space-x-2">
+              <Link href="/" className="flex items-center space-x-2">
                 <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
                   <Code className="w-5 h-5 text-primary-foreground" />
                 </div>
                 <span className="text-xl font-bold">FlowDoc AI</span>
-              </div>
+              </Link>
             </div>
             <div className="flex-1 flex flex-col overflow-y-auto">
               {user && (
@@ -183,7 +183,7 @@ export function DashboardLayout({ children, user }: DashboardLayoutProps) {
 
         {/* Main content */}
         <div className="lg:pl-64 flex-1">
-          <main className="flex-1">{children}</main>
+          <main className="flex-1 p-6">{children}</main>
         </div>
       </div>
     </div>
