@@ -2,155 +2,147 @@
 
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
-import { Github, Shield, Eye, GitFork } from "lucide-react"
-import { useRouter } from "next/navigation"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Github, Loader2, AlertCircle, CheckCircle } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 
 interface GitHubAuthModalProps {
   isOpen: boolean
   onOpenChange: (open: boolean) => void
+  onSuccess?: () => void
 }
 
-export function GitHubAuthModal({ isOpen, onOpenChange }: GitHubAuthModalProps) {
-  const [isLoading, setIsLoading] = useState(false)
-  const router = useRouter()
+export function GitHubAuthModal({ isOpen, onOpenChange, onSuccess }: GitHubAuthModalProps) {
+  const [isAuthenticating, setIsAuthenticating] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const { toast } = useToast()
 
-  const handleGitHubLogin = () => {
-    setIsLoading(true)
+  const handleGitHubAuth = async () => {
+    try {
+      setIsAuthenticating(true)
+      setError(null)
 
-    // Open GitHub OAuth in a popup window
-    const width = 600
-    const height = 700
-    const left = window.screenX + (window.outerWidth - width) / 2
-    const top = window.screenY + (window.outerHeight - height) / 2
+      // Get the authorization URL from our API
+      const response = await fetch("/api/auth/github")
 
-    const popup = window.open(
-      "/api/auth/github",
-      "github-oauth",
-      `width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=yes,status=yes`,
-    )
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || "Failed to initiate GitHub authentication")
+      }
 
-    // Check if popup was blocked
-    if (!popup || popup.closed || typeof popup.closed === "undefined") {
-      setIsLoading(false)
-      toast({
-        title: "Popup Blocked",
-        description: "Please allow popups for this site and try again.",
-        variant: "destructive",
-      })
-      return
-    }
+      const { authUrl } = await response.json()
 
-    // Poll for popup closure or redirect
-    const checkPopup = setInterval(() => {
-      try {
-        // This will throw if the popup was redirected to a different origin
-        if (popup.closed) {
-          clearInterval(checkPopup)
-          setIsLoading(false)
+      // Open popup window for GitHub OAuth
+      const popup = window.open(authUrl, "github-auth", "width=600,height=700,scrollbars=yes,resizable=yes")
 
-          // Check if authentication was successful by checking for session
-          fetch("/api/auth/session")
-            .then((res) => res.json())
-            .then((data) => {
-              if (data.authenticated) {
-                onOpenChange(false)
-                router.push("/dashboard")
-                toast({
-                  title: "Authentication Successful",
-                  description: "You've successfully connected your GitHub account.",
-                })
-              } else {
-                // Authentication failed or was cancelled
-                toast({
-                  title: "Authentication Failed",
-                  description: "GitHub authentication was unsuccessful or cancelled.",
-                  variant: "destructive",
-                })
-              }
-            })
-            .catch(() => {
-              // Authentication failed or was cancelled
-              toast({
-                title: "Authentication Failed",
-                description: "GitHub authentication was unsuccessful or cancelled.",
-                variant: "destructive",
-              })
-            })
+      if (!popup) {
+        throw new Error("Popup blocked. Please allow popups for this site and try again.")
+      }
+
+      // Listen for messages from the popup
+      const handleMessage = (event: MessageEvent) => {
+        if (event.origin !== window.location.origin) return
+
+        if (event.data.type === "GITHUB_AUTH_SUCCESS") {
+          popup.close()
+          setIsAuthenticating(false)
+          onOpenChange(false)
+          toast({
+            title: "Authentication successful",
+            description: "You have been successfully authenticated with GitHub.",
+          })
+          onSuccess?.()
+          window.location.reload() // Refresh to update user state
+        } else if (event.data.type === "GITHUB_AUTH_ERROR") {
+          popup.close()
+          setIsAuthenticating(false)
+          setError(event.data.error || "Authentication failed")
         }
-      } catch (e) {
-        // Ignore cross-origin errors when checking popup state
       }
-    }, 500)
 
-    // Set a timeout to clear the interval if it takes too long
-    setTimeout(() => {
-      clearInterval(checkPopup)
-      if (!popup.closed) {
-        setIsLoading(false)
-        toast({
-          title: "Authentication Timeout",
-          description: "The authentication process took too long. Please try again.",
-          variant: "destructive",
-        })
-      }
-    }, 120000) // 2 minutes timeout
+      window.addEventListener("message", handleMessage)
+
+      // Check if popup was closed manually
+      const checkClosed = setInterval(() => {
+        if (popup.closed) {
+          clearInterval(checkClosed)
+          window.removeEventListener("message", handleMessage)
+          setIsAuthenticating(false)
+        }
+      }, 1000)
+    } catch (err) {
+      console.error("GitHub auth error:", err)
+      setError(err instanceof Error ? err.message : "An unexpected error occurred")
+      setIsAuthenticating(false)
+    }
   }
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
-        <DialogHeader className="text-center">
-          <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4">
-            <Github className="w-8 h-8 text-primary" />
-          </div>
-          <DialogTitle className="text-2xl">Connect with GitHub</DialogTitle>
-          <DialogDescription>Securely connect your GitHub account to access your repositories</DialogDescription>
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Github className="h-5 w-5" />
+            Connect to GitHub
+          </DialogTitle>
+          <DialogDescription>
+            Connect your GitHub account to access your repositories and generate CI/CD pipelines and documentation.
+          </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-6 py-4">
-          <div className="space-y-3">
-            <div className="flex items-center space-x-3 text-sm">
-              <Eye className="w-4 h-4 text-green-500" />
-              <span>Read public and private repositories</span>
-            </div>
-            <div className="flex items-center space-x-3 text-sm">
-              <GitFork className="w-4 h-4 text-green-500" />
-              <span>Access repository metadata and files</span>
-            </div>
-            <div className="flex items-center space-x-3 text-sm">
-              <Shield className="w-4 h-4 text-green-500" />
-              <span>Secure OAuth2 authentication</span>
-            </div>
-          </div>
+        <div className="space-y-4">
+          {error && (
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
 
-          <div className="bg-muted/50 p-4 rounded-lg">
-            <div className="flex items-start space-x-2">
-              <Shield className="w-4 h-4 text-primary mt-0.5" />
-              <div className="text-sm">
-                <p className="font-medium mb-1">Your data is secure</p>
-                <p className="text-muted-foreground">
-                  We only read repository files necessary for analysis. No code is stored permanently.
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <Button onClick={handleGitHubLogin} disabled={isLoading} className="w-full" size="lg">
-            <Github className="w-5 h-5 mr-2" />
-            {isLoading ? "Connecting..." : "Continue with GitHub"}
-          </Button>
-
-          <div className="text-center">
-            <Badge variant="secondary" className="text-xs">
-              <Shield className="w-3 h-3 mr-1" />
-              OAuth2 Secured
-            </Badge>
+          <div className="space-y-2">
+            <h4 className="text-sm font-medium">This app will be able to:</h4>
+            <ul className="text-sm text-muted-foreground space-y-1">
+              <li className="flex items-center gap-2">
+                <CheckCircle className="h-3 w-3 text-green-500" />
+                Read your public and private repositories
+              </li>
+              <li className="flex items-center gap-2">
+                <CheckCircle className="h-3 w-3 text-green-500" />
+                Access repository files and metadata
+              </li>
+              <li className="flex items-center gap-2">
+                <CheckCircle className="h-3 w-3 text-green-500" />
+                Read your email address
+              </li>
+            </ul>
           </div>
         </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isAuthenticating}>
+            Cancel
+          </Button>
+          <Button onClick={handleGitHubAuth} disabled={isAuthenticating}>
+            {isAuthenticating ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Authenticating...
+              </>
+            ) : (
+              <>
+                <Github className="mr-2 h-4 w-4" />
+                Connect GitHub
+              </>
+            )}
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   )

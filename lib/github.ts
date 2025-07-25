@@ -1,10 +1,13 @@
-export interface GitHubRepo {
+export interface GitHubRepository {
   id: number
   name: string
   full_name: string
+  owner: {
+    login: string
+    avatar_url: string
+  }
   description: string | null
   private: boolean
-  html_url: string
   language: string | null
   stargazers_count: number
   forks_count: number
@@ -12,29 +15,23 @@ export interface GitHubRepo {
   default_branch: string
 }
 
-export interface GitHubUser {
-  id: number
-  login: string
-  name: string | null
-  email: string | null
-  avatar_url: string
-}
-
 export interface GitHubFile {
   name: string
   path: string
   content: string
-  encoding: string
   size: number
+  type: string
 }
 
 export class GitHubAPI {
-  private baseUrl = "https://api.github.com"
+  private accessToken: string
 
-  constructor(private accessToken: string) {}
+  constructor(accessToken: string) {
+    this.accessToken = accessToken
+  }
 
-  async getUser(): Promise<GitHubUser> {
-    const response = await fetch(`${this.baseUrl}/user`, {
+  private async request(url: string) {
+    const response = await fetch(url, {
       headers: {
         Authorization: `Bearer ${this.accessToken}`,
         Accept: "application/vnd.github.v3+json",
@@ -42,149 +39,106 @@ export class GitHubAPI {
     })
 
     if (!response.ok) {
-      throw new Error(`GitHub API error: ${response.status}`)
+      throw new Error(`GitHub API error: ${response.status} ${response.statusText}`)
     }
 
     return response.json()
   }
 
-  async getRepositories(): Promise<GitHubRepo[]> {
-    const response = await fetch(`${this.baseUrl}/user/repos?sort=updated&per_page=100`, {
-      headers: {
-        Authorization: `Bearer ${this.accessToken}`,
-        Accept: "application/vnd.github.v3+json",
-      },
-    })
-
-    if (!response.ok) {
-      throw new Error(`GitHub API error: ${response.status}`)
-    }
-
-    return response.json()
+  async getUser() {
+    return this.request("https://api.github.com/user")
   }
 
-  async getRepository(owner: string, repo: string): Promise<GitHubRepo> {
-    const response = await fetch(`${this.baseUrl}/repos/${owner}/${repo}`, {
-      headers: {
-        Authorization: `Bearer ${this.accessToken}`,
-        Accept: "application/vnd.github.v3+json",
-      },
-    })
-
-    if (!response.ok) {
-      throw new Error(`GitHub API error: ${response.status}`)
-    }
-
-    return response.json()
+  async getRepositories(page = 1, perPage = 30) {
+    return this.request(`https://api.github.com/user/repos?page=${page}&per_page=${perPage}&sort=updated`)
   }
 
-  async getFileContent(owner: string, repo: string, path: string): Promise<GitHubFile | null> {
-    try {
-      const response = await fetch(`${this.baseUrl}/repos/${owner}/${repo}/contents/${path}`, {
-        headers: {
-          Authorization: `Bearer ${this.accessToken}`,
-          Accept: "application/vnd.github.v3+json",
-        },
-      })
-
-      if (!response.ok) {
-        if (response.status === 404) return null
-        throw new Error(`GitHub API error: ${response.status}`)
-      }
-
-      const data = await response.json()
-
-      // Decode base64 content
-      if (data.encoding === "base64") {
-        data.content = atob(data.content.replace(/\n/g, ""))
-      }
-
-      return data
-    } catch (error) {
-      console.error(`Error fetching file ${path}:`, error)
-      return null
-    }
+  async getRepository(owner: string, repo: string): Promise<GitHubRepository> {
+    return this.request(`https://api.github.com/repos/${owner}/${repo}`)
   }
 
-  async getDirectoryContents(owner: string, repo: string, path = ""): Promise<any[]> {
-    try {
-      const response = await fetch(`${this.baseUrl}/repos/${owner}/${repo}/contents/${path}`, {
-        headers: {
-          Authorization: `Bearer ${this.accessToken}`,
-          Accept: "application/vnd.github.v3+json",
-        },
-      })
+  async getFileContent(owner: string, repo: string, path: string): Promise<GitHubFile> {
+    const data = await this.request(`https://api.github.com/repos/${owner}/${repo}/contents/${path}`)
 
-      if (!response.ok) {
-        if (response.status === 404) return []
-        throw new Error(`GitHub API error: ${response.status}`)
-      }
-
-      return response.json()
-    } catch (error) {
-      console.error(`Error fetching directory ${path}:`, error)
-      return []
+    return {
+      name: data.name,
+      path: data.path,
+      content: Buffer.from(data.content, "base64").toString("utf-8"),
+      size: data.size,
+      type: data.type,
     }
   }
 
   async getWorkflowFiles(owner: string, repo: string): Promise<GitHubFile[]> {
-    const workflowFiles: GitHubFile[] = []
-
     try {
-      const contents = await this.getDirectoryContents(owner, repo, ".github/workflows")
+      const workflows = await this.request(`https://api.github.com/repos/${owner}/${repo}/contents/.github/workflows`)
 
-      for (const item of contents) {
-        if (item.type === "file" && (item.name.endsWith(".yml") || item.name.endsWith(".yaml"))) {
-          const file = await this.getFileContent(owner, repo, item.path)
-          if (file) {
+      if (!Array.isArray(workflows)) {
+        return []
+      }
+
+      const workflowFiles: GitHubFile[] = []
+
+      // Get up to 3 workflow files
+      for (const workflow of workflows.slice(0, 3)) {
+        if (workflow.type === "file") {
+          try {
+            const file = await this.getFileContent(owner, repo, workflow.path)
             workflowFiles.push(file)
+          } catch (error) {
+            console.error(`Error fetching workflow file ${workflow.path}:`, error)
           }
         }
       }
+
+      return workflowFiles
     } catch (error) {
       console.error("Error fetching workflow files:", error)
+      return []
     }
-
-    return workflowFiles
   }
 
   async getDocumentationFiles(owner: string, repo: string): Promise<GitHubFile[]> {
     const docFiles: GitHubFile[] = []
-    const filesToCheck = [
-      "README.md",
-      "README.rst",
-      "README.txt",
-      "CONTRIBUTING.md",
-      "LICENSE",
-      "LICENSE.md",
-      "package.json",
-      "requirements.txt",
-      "Dockerfile",
-      "docker-compose.yml",
-    ]
 
-    // Check root files
-    for (const filename of filesToCheck) {
-      const file = await this.getFileContent(owner, repo, filename)
-      if (file) {
-        docFiles.push(file)
+    // Try to get README
+    try {
+      const readme = await this.getFileContent(owner, repo, "README.md")
+      docFiles.push(readme)
+    } catch (error) {
+      // Try other README variations
+      const readmeVariations = ["readme.md", "README.rst", "readme.rst", "README.txt", "readme.txt"]
+
+      for (const variation of readmeVariations) {
+        try {
+          const readme = await this.getFileContent(owner, repo, variation)
+          docFiles.push(readme)
+          break
+        } catch (e) {
+          // Continue to next variation
+        }
       }
     }
 
-    // Check docs directory
+    // Try to get docs directory
     try {
-      const docsContents = await this.getDirectoryContents(owner, repo, "docs")
-      for (const item of docsContents.slice(0, 10)) {
-        // Limit to first 10 files
-        if (item.type === "file" && (item.name.endsWith(".md") || item.name.endsWith(".rst"))) {
-          const file = await this.getFileContent(owner, repo, item.path)
-          if (file) {
-            docFiles.push(file)
+      const docs = await this.request(`https://api.github.com/repos/${owner}/${repo}/contents/docs`)
+
+      if (Array.isArray(docs)) {
+        // Get up to 2 doc files
+        for (const doc of docs.slice(0, 2)) {
+          if (doc.type === "file" && (doc.name.endsWith(".md") || doc.name.endsWith(".rst"))) {
+            try {
+              const file = await this.getFileContent(owner, repo, doc.path)
+              docFiles.push(file)
+            } catch (error) {
+              console.error(`Error fetching doc file ${doc.path}:`, error)
+            }
           }
         }
       }
     } catch (error) {
-      console.error("Error fetching docs directory:", error)
+      // Docs directory doesn't exist, that's fine
     }
 
     return docFiles

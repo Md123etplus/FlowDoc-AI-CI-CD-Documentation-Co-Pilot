@@ -1,94 +1,30 @@
+import { type NextRequest, NextResponse } from "next/server"
 import { exchangeCodeForToken, setUserSession } from "@/lib/auth"
 
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
+  const searchParams = request.nextUrl.searchParams
+  const code = searchParams.get("code")
+  const error = searchParams.get("error")
+
+  // Handle OAuth errors
+  if (error) {
+    const errorDescription = searchParams.get("error_description") || error
+    return NextResponse.redirect(new URL(`/auth/error?error=${encodeURIComponent(errorDescription)}`, request.url))
+  }
+
+  if (!code) {
+    return NextResponse.redirect(new URL("/auth/error?error=No authorization code received", request.url))
+  }
+
   try {
-    const url = new URL(request.url)
-    const code = url.searchParams.get("code")
-    const error = url.searchParams.get("error")
-
-    if (error) {
-      return new Response(
-        `
-        <!DOCTYPE html>
-        <html>
-          <head>
-            <title>Authentication Error</title>
-            <style>
-              body { font-family: system-ui, sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
-              .container { text-align: center; max-width: 500px; padding: 2rem; }
-              .error { color: #e11d48; margin-bottom: 1rem; }
-              .message { margin-bottom: 2rem; color: #4b5563; }
-            </style>
-            <script>
-              window.onload = function() {
-                window.opener && window.opener.postMessage({ type: 'auth-error', error: '${error}' }, window.location.origin);
-                setTimeout(function() { window.close(); }, 5000);
-              }
-            </script>
-          </head>
-          <body>
-            <div class="container">
-              <h2 class="error">Authentication Failed</h2>
-              <p class="message">GitHub authentication was unsuccessful: ${error}</p>
-              <p>This window will close automatically in a few seconds.</p>
-            </div>
-          </body>
-        </html>
-        `,
-        {
-          status: 400,
-          headers: {
-            "Content-Type": "text/html",
-          },
-        },
-      )
-    }
-
-    if (!code) {
-      return new Response(
-        `
-        <!DOCTYPE html>
-        <html>
-          <head>
-            <title>Authentication Error</title>
-            <style>
-              body { font-family: system-ui, sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
-              .container { text-align: center; max-width: 500px; padding: 2rem; }
-              .error { color: #e11d48; margin-bottom: 1rem; }
-              .message { margin-bottom: 2rem; color: #4b5563; }
-            </style>
-            <script>
-              window.onload = function() {
-                window.opener && window.opener.postMessage({ type: 'auth-error', error: 'No authorization code received' }, window.location.origin);
-                setTimeout(function() { window.close(); }, 5000);
-              }
-            </script>
-          </head>
-          <body>
-            <div class="container">
-              <h2 class="error">Authentication Failed</h2>
-              <p class="message">No authorization code was received from GitHub.</p>
-              <p>This window will close automatically in a few seconds.</p>
-            </div>
-          </body>
-        </html>
-        `,
-        {
-          status: 400,
-          headers: {
-            "Content-Type": "text/html",
-          },
-        },
-      )
-    }
-
-    // Exchange the code for an access token
+    // Exchange code for access token
     const accessToken = await exchangeCodeForToken(code)
 
     // Get user information from GitHub
     const userResponse = await fetch("https://api.github.com/user", {
       headers: {
         Authorization: `Bearer ${accessToken}`,
+        Accept: "application/vnd.github.v3+json",
       },
     })
 
@@ -96,99 +32,156 @@ export async function GET(request: Request) {
       throw new Error("Failed to fetch user information")
     }
 
-    const user = await userResponse.json()
+    const userData = await userResponse.json()
 
-    // Set the user session
-    await setUserSession({
+    // Create user session
+    const session = {
       accessToken,
       user: {
-        id: user.id,
-        login: user.login,
-        name: user.name,
-        email: user.email,
-        avatar_url: user.avatar_url,
+        id: userData.id,
+        login: userData.login,
+        name: userData.name,
+        email: userData.email,
+        avatar_url: userData.avatar_url,
       },
-    })
+    }
 
-    // Return a success page that will close the popup and notify the parent window
-    return new Response(
+    await setUserSession(session)
+
+    // Return success page that will communicate with parent window
+    return new NextResponse(
       `
       <!DOCTYPE html>
       <html>
         <head>
           <title>Authentication Successful</title>
           <style>
-            body { font-family: system-ui, sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
-            .container { text-align: center; max-width: 500px; padding: 2rem; }
-            .success { color: #10b981; margin-bottom: 1rem; }
-            .message { margin-bottom: 2rem; color: #4b5563; }
-            .user { display: flex; align-items: center; justify-content: center; margin-bottom: 2rem; }
-            .avatar { width: 50px; height: 50px; border-radius: 50%; margin-right: 1rem; }
-            .name { font-weight: bold; }
-          </style>
-          <script>
-            window.onload = function() {
-              window.opener && window.opener.postMessage({ type: 'auth-success', user: ${JSON.stringify(user)} }, window.location.origin);
-              setTimeout(function() { window.close(); }, 3000);
+            body {
+              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              height: 100vh;
+              margin: 0;
+              background: #f8fafc;
             }
-          </script>
+            .container {
+              text-align: center;
+              padding: 2rem;
+              background: white;
+              border-radius: 8px;
+              box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            }
+            .success-icon {
+              color: #10b981;
+              font-size: 3rem;
+              margin-bottom: 1rem;
+            }
+            h1 {
+              color: #1f2937;
+              margin-bottom: 0.5rem;
+            }
+            p {
+              color: #6b7280;
+              margin-bottom: 1.5rem;
+            }
+          </style>
         </head>
         <body>
           <div class="container">
-            <h2 class="success">Authentication Successful</h2>
-            <div class="user">
-              <img src="${user.avatar_url}" alt="Avatar" class="avatar" />
-              <div>
-                <div class="name">${user.name || user.login}</div>
-                <div class="login">@${user.login}</div>
-              </div>
-            </div>
-            <p class="message">You have successfully authenticated with GitHub.</p>
-            <p>This window will close automatically in a few seconds.</p>
+            <div class="success-icon">✓</div>
+            <h1>Authentication Successful!</h1>
+            <p>You can now close this window and return to the application.</p>
           </div>
+          <script>
+            // Send success message to parent window
+            if (window.opener) {
+              window.opener.postMessage({
+                type: 'GITHUB_AUTH_SUCCESS',
+                user: ${JSON.stringify(session.user)}
+              }, window.location.origin);
+            }
+            
+            // Auto-close after 2 seconds
+            setTimeout(() => {
+              window.close();
+            }, 2000);
+          </script>
         </body>
       </html>
       `,
       {
-        status: 200,
         headers: {
           "Content-Type": "text/html",
         },
       },
     )
   } catch (error) {
-    console.error("Error in GitHub callback:", error)
+    console.error("GitHub OAuth callback error:", error)
 
-    return new Response(
+    // Return error page that will communicate with parent window
+    return new NextResponse(
       `
       <!DOCTYPE html>
       <html>
         <head>
-          <title>Authentication Error</title>
+          <title>Authentication Failed</title>
           <style>
-            body { font-family: system-ui, sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
-            .container { text-align: center; max-width: 500px; padding: 2rem; }
-            .error { color: #e11d48; margin-bottom: 1rem; }
-            .message { margin-bottom: 2rem; color: #4b5563; }
-          </style>
-          <script>
-            window.onload = function() {
-              window.opener && window.opener.postMessage({ type: 'auth-error', error: 'Server error during authentication' }, window.location.origin);
-              setTimeout(function() { window.close(); }, 5000);
+            body {
+              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              height: 100vh;
+              margin: 0;
+              background: #f8fafc;
             }
-          </script>
+            .container {
+              text-align: center;
+              padding: 2rem;
+              background: white;
+              border-radius: 8px;
+              box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            }
+            .error-icon {
+              color: #ef4444;
+              font-size: 3rem;
+              margin-bottom: 1rem;
+            }
+            h1 {
+              color: #1f2937;
+              margin-bottom: 0.5rem;
+            }
+            p {
+              color: #6b7280;
+              margin-bottom: 1.5rem;
+            }
+          </style>
         </head>
         <body>
           <div class="container">
-            <h2 class="error">Authentication Failed</h2>
-            <p class="message">An error occurred during GitHub authentication.</p>
-            <p>This window will close automatically in a few seconds.</p>
+            <div class="error-icon">✗</div>
+            <h1>Authentication Failed</h1>
+            <p>There was an error during authentication. Please try again.</p>
           </div>
+          <script>
+            // Send error message to parent window
+            if (window.opener) {
+              window.opener.postMessage({
+                type: 'GITHUB_AUTH_ERROR',
+                error: '${error instanceof Error ? error.message : "Authentication failed"}'
+              }, window.location.origin);
+            }
+            
+            // Auto-close after 3 seconds
+            setTimeout(() => {
+              window.close();
+            }, 3000);
+          </script>
         </body>
       </html>
       `,
       {
-        status: 500,
         headers: {
           "Content-Type": "text/html",
         },
