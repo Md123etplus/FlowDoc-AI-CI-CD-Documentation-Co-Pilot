@@ -1,7 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { getUserSession } from "@/lib/auth"
 
-export async function GET(request: NextRequest, { params }: { params: { owner: string; repo: string } }) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ owner: string; repo: string }> }) {
   try {
     const session = await getUserSession()
 
@@ -9,7 +9,7 @@ export async function GET(request: NextRequest, { params }: { params: { owner: s
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 })
     }
 
-    const { owner, repo } = params
+    const { owner, repo } = await params
     const searchParams = request.nextUrl.searchParams
     const path = searchParams.get("path") || ""
 

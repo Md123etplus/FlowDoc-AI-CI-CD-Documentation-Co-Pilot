@@ -2,26 +2,33 @@ import { type NextRequest, NextResponse } from "next/server"
 import { cookies } from "next/headers"
 
 export async function GET(request: NextRequest) {
-  const searchParams = request.nextUrl.searchParams
-  const code = searchParams.get("code")
-  const error = searchParams.get("error")
-
-  if (error) {
-    console.error("GitHub OAuth error:", error)
-    return NextResponse.redirect(new URL(`/auth/error?message=${encodeURIComponent(error)}`, request.url))
-  }
-
-  if (!code) {
-    return NextResponse.redirect(new URL("/auth/error?message=No+authorization+code+received", request.url))
-  }
-
   try {
+    const searchParams = request.nextUrl.searchParams
+    const code = searchParams.get("code")
+    const error = searchParams.get("error")
+
+    if (error) {
+      console.error("GitHub OAuth error:", error)
+      return NextResponse.redirect(
+        new URL("/auth/error?error=oauth_denied", process.env.NEXTAUTH_URL || "http://localhost:3000"),
+      )
+    }
+
+    if (!code) {
+      return NextResponse.redirect(
+        new URL("/auth/error?error=no_code", process.env.NEXTAUTH_URL || "http://localhost:3000"),
+      )
+    }
+
     const clientId = process.env.GITHUB_CLIENT_ID
     const clientSecret = process.env.GITHUB_CLIENT_SECRET
     const redirectUri = process.env.GITHUB_REDIRECT_URI
 
     if (!clientId || !clientSecret || !redirectUri) {
-      throw new Error("Missing GitHub OAuth configuration")
+      console.error("Missing GitHub OAuth configuration")
+      return NextResponse.redirect(
+        new URL("/auth/error?error=configuration", process.env.NEXTAUTH_URL || "http://localhost:3000"),
+      )
     }
 
     // Exchange code for access token
@@ -46,12 +53,15 @@ export async function GET(request: NextRequest) {
     const tokenData = await tokenResponse.json()
 
     if (tokenData.error) {
-      throw new Error(tokenData.error_description || tokenData.error)
+      console.error("Token exchange error:", tokenData.error)
+      return NextResponse.redirect(
+        new URL("/auth/error?error=token_exchange", process.env.NEXTAUTH_URL || "http://localhost:3000"),
+      )
     }
 
     const accessToken = tokenData.access_token
 
-    // Get user information from GitHub
+    // Get user information
     const userResponse = await fetch("https://api.github.com/user", {
       headers: {
         Authorization: `Bearer ${accessToken}`,
@@ -63,34 +73,37 @@ export async function GET(request: NextRequest) {
       throw new Error("Failed to fetch user information")
     }
 
-    const user = await userResponse.json()
+    const userData = await userResponse.json()
 
-    // Set user session
+    // Create session
     const session = {
-      accessToken,
       user: {
-        id: user.id,
-        login: user.login,
-        name: user.name,
-        email: user.email,
-        avatar_url: user.avatar_url,
+        id: userData.id,
+        login: userData.login,
+        name: userData.name,
+        email: userData.email,
+        avatar_url: userData.avatar_url,
       },
-      authenticated: true,
+      accessToken,
+      expires: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
     }
 
+    // Set session cookie
     const cookieStore = await cookies()
-    cookieStore.set("github_session", JSON.stringify(session), {
+    cookieStore.set("session", JSON.stringify(session), {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
-      maxAge: 60 * 60 * 24 * 7, // 7 days
+      maxAge: 30 * 24 * 60 * 60, // 30 days
       path: "/",
     })
 
     // Redirect to dashboard
-    return NextResponse.redirect(new URL("/dashboard", request.url))
+    return NextResponse.redirect(new URL("/dashboard", process.env.NEXTAUTH_URL || "http://localhost:3000"))
   } catch (error) {
-    console.error("Error during GitHub OAuth callback:", error)
-    return NextResponse.redirect(new URL("/auth/error?message=Authentication+failed", request.url))
+    console.error("GitHub callback error:", error)
+    return NextResponse.redirect(
+      new URL("/auth/error?error=callback_failed", process.env.NEXTAUTH_URL || "http://localhost:3000"),
+    )
   }
 }
