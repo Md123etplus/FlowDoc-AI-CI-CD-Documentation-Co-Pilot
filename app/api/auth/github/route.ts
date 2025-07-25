@@ -1,18 +1,26 @@
 import { NextResponse } from "next/server"
-import { getAuthorizationUrl } from "@/lib/auth"
 
 export async function GET() {
   try {
-    const authUrl = getAuthorizationUrl()
-    return NextResponse.redirect(authUrl)
+    const clientId = process.env.GITHUB_CLIENT_ID
+    const redirectUri = process.env.GITHUB_REDIRECT_URI
+
+    if (!clientId || !redirectUri) {
+      return NextResponse.json({ error: "GitHub OAuth configuration missing" }, { status: 500 })
+    }
+
+    const params = new URLSearchParams({
+      client_id: clientId,
+      redirect_uri: redirectUri,
+      scope: "repo user:email",
+      response_type: "code",
+    })
+
+    const githubAuthUrl = `https://github.com/login/oauth/authorize?${params.toString()}`
+
+    return NextResponse.json({ url: githubAuthUrl })
   } catch (error) {
-    console.error("GitHub OAuth error:", error)
-    // Redirect to an error page or show an error message
-    return NextResponse.redirect(
-      new URL(
-        "/auth/error?message=Missing+GitHub+OAuth+configuration",
-        process.env.NEXTAUTH_URL || "http://localhost:3000",
-      ),
-    )
+    console.error("GitHub OAuth URL generation error:", error)
+    return NextResponse.json({ error: "Failed to generate GitHub OAuth URL" }, { status: 500 })
   }
 }

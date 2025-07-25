@@ -6,7 +6,7 @@ export async function GET() {
     const session = await getUserSession()
 
     if (!session) {
-      return NextResponse.json({ authenticated: false, user: null })
+      return NextResponse.json({ authenticated: false })
     }
 
     return NextResponse.json({
@@ -14,7 +14,7 @@ export async function GET() {
       user: session.user,
     })
   } catch (error) {
-    console.error("Error getting session:", error)
-    return NextResponse.json({ authenticated: false, user: null })
+    console.error("Session API error:", error)
+    return NextResponse.json({ authenticated: false })
   }
 }

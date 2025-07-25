@@ -1,14 +1,14 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Star, GitFork, Eye, EyeOff, Calendar, Search } from "lucide-react"
-import Link from "next/link"
+import { Star, GitFork, Eye, EyeOff, Calendar, Search, Filter } from "lucide-react"
 
 interface Repository {
   id: number
@@ -24,59 +24,88 @@ interface Repository {
 }
 
 export default function DashboardPage() {
+  const router = useRouter()
   const [repositories, setRepositories] = useState<Repository[]>([])
+  const [filteredRepositories, setFilteredRepositories] = useState<Repository[]>([])
   const [loading, setLoading] = useState(true)
-  const [searchTerm, setSearchTerm] = useState("")
+  const [error, setError] = useState<string | null>(null)
+  const [searchQuery, setSearchQuery] = useState("")
   const [visibilityFilter, setVisibilityFilter] = useState("all")
   const [languageFilter, setLanguageFilter] = useState("all")
 
   useEffect(() => {
-    async function fetchRepositories() {
-      try {
-        setLoading(true)
-        const response = await fetch("/api/github/repositories?per_page=50")
-
-        if (!response.ok) {
-          throw new Error("Failed to fetch repositories")
-        }
-
-        const repos = await response.json()
-        setRepositories(repos)
-      } catch (error) {
-        console.error("Error fetching repositories:", error)
-      } finally {
-        setLoading(false)
-      }
-    }
-
     fetchRepositories()
   }, [])
 
-  // Filter repositories based on search and filters
-  const filteredRepositories = repositories.filter((repo) => {
-    const matchesSearch =
-      repo.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (repo.description && repo.description.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      (repo.language && repo.language.toLowerCase().includes(searchTerm.toLowerCase()))
+  useEffect(() => {
+    filterRepositories()
+  }, [repositories, searchQuery, visibilityFilter, languageFilter])
 
-    const matchesVisibility =
-      visibilityFilter === "all" ||
-      (visibilityFilter === "public" && !repo.private) ||
-      (visibilityFilter === "private" && repo.private)
+  const fetchRepositories = async () => {
+    try {
+      setLoading(true)
+      setError(null)
 
-    const matchesLanguage = languageFilter === "all" || repo.language === languageFilter
+      const response = await fetch("/api/github/repositories?per_page=50")
 
-    return matchesSearch && matchesVisibility && matchesLanguage
-  })
+      if (!response.ok) {
+        if (response.status === 401) {
+          router.push("/")
+          return
+        }
+        throw new Error("Failed to fetch repositories")
+      }
 
-  // Get unique languages for filter
-  const languages = Array.from(new Set(repositories.map((repo) => repo.language).filter(Boolean)))
+      const repos = await response.json()
+      setRepositories(repos)
+    } catch (err) {
+      console.error("Error fetching repositories:", err)
+      setError(err instanceof Error ? err.message : "An error occurred")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const filterRepositories = () => {
+    let filtered = repositories
+
+    // Search filter
+    if (searchQuery) {
+      filtered = filtered.filter(
+        (repo) =>
+          repo.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          repo.description?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          repo.language?.toLowerCase().includes(searchQuery.toLowerCase()),
+      )
+    }
+
+    // Visibility filter
+    if (visibilityFilter !== "all") {
+      filtered = filtered.filter((repo) => (visibilityFilter === "private" ? repo.private : !repo.private))
+    }
+
+    // Language filter
+    if (languageFilter !== "all") {
+      filtered = filtered.filter((repo) => repo.language === languageFilter)
+    }
+
+    setFilteredRepositories(filtered)
+  }
+
+  const handleAnalyzeRepository = (repo: Repository) => {
+    router.push(`/analyze/${repo.full_name}`)
+  }
+
+  const getUniqueLanguages = () => {
+    const languages = repositories.map((repo) => repo.language).filter((lang): lang is string => lang !== null)
+    return Array.from(new Set(languages)).sort()
+  }
 
   if (loading) {
     return (
       <div className="container mx-auto px-4 py-8">
         <div className="mb-8">
-          <Skeleton className="h-8 w-48 mb-2" />
+          <Skeleton className="h-8 w-64 mb-2" />
           <Skeleton className="h-4 w-96" />
         </div>
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
@@ -96,13 +125,31 @@ export default function DashboardPage() {
     )
   }
 
+  if (error) {
+    return (
+      <div className="container mx-auto px-4 py-8">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-red-600">Error</CardTitle>
+            <CardDescription>{error}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button onClick={fetchRepositories} variant="outline">
+              Try Again
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
   return (
     <div className="container mx-auto px-4 py-8">
       {/* Header */}
       <div className="mb-8">
         <h1 className="text-3xl font-bold mb-2">Your Repositories</h1>
         <p className="text-muted-foreground">
-          Manage and analyze your GitHub repositories. Generate CI/CD pipelines and documentation.
+          Select a repository to analyze and generate CI/CD pipelines or documentation.
         </p>
       </div>
 
@@ -112,13 +159,14 @@ export default function DashboardPage() {
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
           <Input
             placeholder="Search repositories..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
             className="pl-10"
           />
         </div>
         <Select value={visibilityFilter} onValueChange={setVisibilityFilter}>
           <SelectTrigger className="w-full sm:w-[180px]">
+            <Filter className="w-4 h-4 mr-2" />
             <SelectValue placeholder="Visibility" />
           </SelectTrigger>
           <SelectContent>
@@ -133,8 +181,8 @@ export default function DashboardPage() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Languages</SelectItem>
-            {languages.map((language) => (
-              <SelectItem key={language} value={language!}>
+            {getUniqueLanguages().map((language) => (
+              <SelectItem key={language} value={language}>
                 {language}
               </SelectItem>
             ))}
@@ -149,32 +197,23 @@ export default function DashboardPage() {
             <CardHeader>
               <div className="flex items-start justify-between">
                 <div className="flex-1">
-                  <CardTitle className="text-lg mb-1">{repo.name}</CardTitle>
-                  <div className="flex items-center gap-2 mb-2">
-                    <Badge variant={repo.private ? "secondary" : "default"} className="text-xs">
-                      {repo.private ? (
-                        <>
-                          <EyeOff className="w-3 h-3 mr-1" />
-                          Private
-                        </>
-                      ) : (
-                        <>
-                          <Eye className="w-3 h-3 mr-1" />
-                          Public
-                        </>
-                      )}
-                    </Badge>
-                    {repo.language && (
-                      <Badge variant="outline" className="text-xs">
-                        {repo.language}
-                      </Badge>
-                    )}
-                  </div>
+                  <CardTitle className="text-lg font-semibold">{repo.name}</CardTitle>
+                  <CardDescription className="mt-1">{repo.description || "No description available"}</CardDescription>
                 </div>
+                <Badge variant={repo.private ? "secondary" : "default"}>
+                  {repo.private ? (
+                    <>
+                      <EyeOff className="w-3 h-3 mr-1" />
+                      Private
+                    </>
+                  ) : (
+                    <>
+                      <Eye className="w-3 h-3 mr-1" />
+                      Public
+                    </>
+                  )}
+                </Badge>
               </div>
-              <CardDescription className="line-clamp-2">
-                {repo.description || "No description available"}
-              </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="flex items-center justify-between text-sm text-muted-foreground mb-4">
@@ -188,19 +227,19 @@ export default function DashboardPage() {
                     {repo.forks_count}
                   </div>
                 </div>
-                <div className="flex items-center gap-1">
-                  <Calendar className="w-4 h-4" />
-                  {new Date(repo.updated_at).toLocaleDateString()}
-                </div>
+                {repo.language && (
+                  <Badge variant="outline" className="text-xs">
+                    {repo.language}
+                  </Badge>
+                )}
               </div>
-              <div className="flex gap-2">
-                <Button asChild size="sm" className="flex-1">
-                  <Link href={`/analyze/${repo.full_name}`}>Analyze Repository</Link>
-                </Button>
-                <Button variant="outline" size="sm" asChild>
-                  <a href={repo.html_url} target="_blank" rel="noopener noreferrer">
-                    View
-                  </a>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                  <Calendar className="w-3 h-3" />
+                  Updated {new Date(repo.updated_at).toLocaleDateString()}
+                </div>
+                <Button size="sm" onClick={() => handleAnalyzeRepository(repo)} className="ml-2">
+                  Analyze Repository
                 </Button>
               </div>
             </CardContent>
@@ -210,23 +249,7 @@ export default function DashboardPage() {
 
       {filteredRepositories.length === 0 && !loading && (
         <div className="text-center py-12">
-          <div className="text-muted-foreground mb-4">
-            {searchTerm || visibilityFilter !== "all" || languageFilter !== "all"
-              ? "No repositories match your filters"
-              : "No repositories found"}
-          </div>
-          {(searchTerm || visibilityFilter !== "all" || languageFilter !== "all") && (
-            <Button
-              variant="outline"
-              onClick={() => {
-                setSearchTerm("")
-                setVisibilityFilter("all")
-                setLanguageFilter("all")
-              }}
-            >
-              Clear Filters
-            </Button>
-          )}
+          <p className="text-muted-foreground">No repositories found matching your filters.</p>
         </div>
       )}
     </div>

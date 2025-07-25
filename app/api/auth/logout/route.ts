@@ -6,7 +6,7 @@ export async function POST() {
     await clearUserSession()
     return NextResponse.json({ success: true })
   } catch (error) {
-    console.error("Error during logout:", error)
+    console.error("Logout error:", error)
     return NextResponse.json({ error: "Failed to logout" }, { status: 500 })
   }
 }
