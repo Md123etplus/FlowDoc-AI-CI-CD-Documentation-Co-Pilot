@@ -1,131 +1,172 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { useParams } from "next/navigation"
+import { useRouter } from "next/navigation"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
+import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { ScrollArea } from "@/components/ui/scroll-area"
-import {
-  GitBranch,
-  Star,
-  GitFork,
-  Eye,
-  Calendar,
-  User,
-  FileText,
-  Folder,
-  AlertCircle,
-  Download,
-  ExternalLink,
-} from "lucide-react"
+import { ArrowLeft, Star, GitFork, Eye, Code, FileText, Folder, ExternalLink, AlertCircle, Loader2 } from "lucide-react"
 
 interface Repository {
   id: number
   name: string
   full_name: string
-  description: string
+  description: string | null
   private: boolean
   html_url: string
-  clone_url: string
   stargazers_count: number
-  watchers_count: number
   forks_count: number
-  language: string
+  watchers_count: number
+  language: string | null
+  languages: Record<string, number>
+  topics: string[]
   created_at: string
   updated_at: string
   pushed_at: string
+  size: number
+  default_branch: string
   owner: {
     login: string
     avatar_url: string
+    html_url: string
   }
-  languages: Record<string, number>
-  contents: Array<{
-    name: string
-    path: string
-    type: "file" | "dir"
-    size?: number
-  }>
 }
 
-export default function AnalyzePage() {
-  const params = useParams()
-  const [repository, setRepository] = useState<Repository | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+interface FileItem {
+  name: string
+  path: string
+  type: "file" | "dir"
+  size?: number
+  download_url?: string
+}
 
-  // Parse repository ID from params
-  const repositoryId = Array.isArray(params.id) ? params.id.join("/") : params.id
+interface AnalyzePageProps {
+  params: Promise<{ id: string[] }>
+}
+
+export default function AnalyzePage({ params }: AnalyzePageProps) {
+  const router = useRouter()
+  const [repository, setRepository] = useState<Repository | null>(null)
+  const [files, setFiles] = useState<FileItem[]>([])
+  const [loading, setLoading] = useState(true)
+  const [filesLoading, setFilesLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [repoId, setRepoId] = useState<string>("")
 
   useEffect(() => {
-    if (!repositoryId) {
-      setError("Repository ID is required")
-      setLoading(false)
-      return
+    async function getRepoId() {
+      const resolvedParams = await params
+      const id = resolvedParams.id.join("/")
+      setRepoId(id)
     }
+    getRepoId()
+  }, [params])
 
-    // Validate repository format (owner/repo)
-    const parts = repositoryId.split("/")
-    if (parts.length !== 2) {
-      setError("Invalid repository format. Expected format: owner/repo")
-      setLoading(false)
-      return
-    }
+  useEffect(() => {
+    if (!repoId) return
 
-    const [owner, repo] = parts
-
-    const fetchRepository = async () => {
+    async function fetchRepositoryData() {
       try {
         setLoading(true)
         setError(null)
 
-        const response = await fetch(`/api/github/repositories/${owner}/${repo}`)
-
-        if (!response.ok) {
-          if (response.status === 401) {
-            setError("Authentication required. Please log in to continue.")
-            return
-          }
-          if (response.status === 404) {
-            setError("Repository not found. Please check if the repository exists and you have access to it.")
-            return
-          }
-          throw new Error("Failed to fetch repository")
+        // Validate repository ID format
+        if (!repoId.includes("/")) {
+          throw new Error("Invalid repository format. Expected format: owner/repo")
         }
 
-        const data = await response.json()
-        setRepository(data)
-      } catch (err) {
-        console.error("Error fetching repository:", err)
-        setError("Failed to load repository. Please try again.")
+        const [owner, repo] = repoId.split("/")
+        if (!owner || !repo) {
+          throw new Error("Invalid repository format. Expected format: owner/repo")
+        }
+
+        // Check authentication
+        const sessionResponse = await fetch("/api/auth/session")
+        const sessionData = await sessionResponse.json()
+
+        if (!sessionData.authenticated) {
+          router.push("/")
+          return
+        }
+
+        // Fetch repository details
+        const repoResponse = await fetch(`/api/github/repositories/${owner}/${repo}`)
+
+        if (!repoResponse.ok) {
+          if (repoResponse.status === 404) {
+            throw new Error("Repository not found. Please check if the repository exists and you have access to it.")
+          } else if (repoResponse.status === 401) {
+            throw new Error("Unauthorized. Please log in again.")
+          } else {
+            throw new Error("Failed to fetch repository data")
+          }
+        }
+
+        const repoData = await repoResponse.json()
+        setRepository(repoData)
+
+        // Fetch repository files
+        setFilesLoading(true)
+        const filesResponse = await fetch(`/api/github/repositories/${owner}/${repo}/files`)
+
+        if (filesResponse.ok) {
+          const filesData = await filesResponse.json()
+          setFiles(Array.isArray(filesData) ? filesData : [])
+        }
+
+        setFilesLoading(false)
+      } catch (error) {
+        console.error("Error fetching repository:", error)
+        setError(error instanceof Error ? error.message : "An unexpected error occurred")
       } finally {
         setLoading(false)
       }
     }
 
-    fetchRepository()
-  }, [repositoryId])
+    fetchRepositoryData()
+  }, [repoId, router])
 
   if (loading) {
     return (
-      <div className="container mx-auto px-4 py-8">
-        <div className="space-y-6">
-          <Skeleton className="h-8 w-64" />
-          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-            {[...Array(6)].map((_, i) => (
-              <Card key={i}>
-                <CardHeader>
-                  <Skeleton className="h-6 w-32" />
-                  <Skeleton className="h-4 w-48" />
-                </CardHeader>
-                <CardContent>
-                  <Skeleton className="h-20 w-full" />
-                </CardContent>
-              </Card>
-            ))}
+      <div className="container mx-auto px-4 py-8 max-w-6xl">
+        <div className="mb-6">
+          <Skeleton className="h-10 w-32 mb-4" />
+          <Skeleton className="h-8 w-96 mb-2" />
+          <Skeleton className="h-4 w-64" />
+        </div>
+
+        <div className="grid lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-2 space-y-6">
+            <Card>
+              <CardHeader>
+                <Skeleton className="h-6 w-48" />
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <Skeleton className="h-4 w-full" />
+                  <Skeleton className="h-4 w-3/4" />
+                  <Skeleton className="h-4 w-1/2" />
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          <div className="space-y-6">
+            <Card>
+              <CardHeader>
+                <Skeleton className="h-6 w-32" />
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  <Skeleton className="h-4 w-full" />
+                  <Skeleton className="h-4 w-2/3" />
+                  <Skeleton className="h-4 w-1/2" />
+                </div>
+              </CardContent>
+            </Card>
           </div>
         </div>
       </div>
@@ -134,208 +175,243 @@ export default function AnalyzePage() {
 
   if (error) {
     return (
-      <div className="container mx-auto px-4 py-8">
+      <div className="container mx-auto px-4 py-8 max-w-4xl">
+        <Button variant="ghost" onClick={() => router.back()} className="mb-6">
+          <ArrowLeft className="w-4 h-4 mr-2" />
+          Back
+        </Button>
+
         <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />
-          <AlertDescription>
+          <AlertDescription className="text-base">
             <strong>Error:</strong> {error}
             <br />
             Please check if the repository exists and you have access to it.
           </AlertDescription>
         </Alert>
+
+        <div className="mt-6 text-center">
+          <Button onClick={() => router.push("/dashboard")}>Go to Dashboard</Button>
+        </div>
       </div>
     )
   }
 
   if (!repository) {
     return (
-      <div className="container mx-auto px-4 py-8">
-        <Alert>
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription>Repository not found or failed to load.</AlertDescription>
-        </Alert>
+      <div className="container mx-auto px-4 py-8 max-w-4xl">
+        <div className="text-center">
+          <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4" />
+          <p>Loading repository...</p>
+        </div>
       </div>
     )
   }
 
-  // Calculate language percentages
-  const totalBytes = Object.values(repository.languages).reduce((sum, bytes) => sum + bytes, 0)
+  const totalLanguageBytes = Object.values(repository.languages).reduce((sum, bytes) => sum + bytes, 0)
   const languagePercentages = Object.entries(repository.languages)
     .map(([lang, bytes]) => ({
       language: lang,
-      percentage: ((bytes / totalBytes) * 100).toFixed(1),
+      percentage: ((bytes / totalLanguageBytes) * 100).toFixed(1),
     }))
     .sort((a, b) => Number.parseFloat(b.percentage) - Number.parseFloat(a.percentage))
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      <div className="space-y-6">
-        {/* Repository Header */}
+    <div className="container mx-auto px-4 py-8 max-w-6xl">
+      {/* Header */}
+      <div className="mb-6">
+        <Button variant="ghost" onClick={() => router.back()} className="mb-4">
+          <ArrowLeft className="w-4 h-4 mr-2" />
+          Back to Dashboard
+        </Button>
+
         <div className="flex items-start justify-between">
-          <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              <h1 className="text-3xl font-bold">{repository.name}</h1>
-              <Badge variant={repository.private ? "secondary" : "default"}>
+          <div>
+            <h1 className="text-3xl font-bold mb-2">{repository.full_name}</h1>
+            {repository.description && <p className="text-muted-foreground text-lg mb-4">{repository.description}</p>}
+
+            <div className="flex items-center space-x-4 text-sm text-muted-foreground">
+              <div className="flex items-center">
+                <Star className="w-4 h-4 mr-1" />
+                {repository.stargazers_count.toLocaleString()}
+              </div>
+              <div className="flex items-center">
+                <GitFork className="w-4 h-4 mr-1" />
+                {repository.forks_count.toLocaleString()}
+              </div>
+              <div className="flex items-center">
+                <Eye className="w-4 h-4 mr-1" />
+                {repository.watchers_count.toLocaleString()}
+              </div>
+              <Badge variant={repository.private ? "secondary" : "outline"}>
                 {repository.private ? "Private" : "Public"}
               </Badge>
             </div>
-            <p className="text-muted-foreground">{repository.description}</p>
-            <div className="flex items-center gap-4 text-sm text-muted-foreground">
-              <div className="flex items-center gap-1">
-                <User className="h-4 w-4" />
-                {repository.owner.login}
-              </div>
-              <div className="flex items-center gap-1">
-                <Calendar className="h-4 w-4" />
-                Updated {new Date(repository.updated_at).toLocaleDateString()}
-              </div>
-            </div>
           </div>
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm" asChild>
-              <a href={repository.html_url} target="_blank" rel="noopener noreferrer">
-                <ExternalLink className="h-4 w-4 mr-2" />
-                View on GitHub
-              </a>
-            </Button>
-          </div>
+
+          <Button asChild>
+            <a href={repository.html_url} target="_blank" rel="noopener noreferrer">
+              <ExternalLink className="w-4 h-4 mr-2" />
+              View on GitHub
+            </a>
+          </Button>
+        </div>
+      </div>
+
+      <div className="grid lg:grid-cols-3 gap-6">
+        {/* Main Content */}
+        <div className="lg:col-span-2 space-y-6">
+          {/* Repository Files */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center">
+                <Folder className="w-5 h-5 mr-2" />
+                Repository Files
+              </CardTitle>
+              <CardDescription>Explore the repository structure and files</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {filesLoading ? (
+                <div className="space-y-2">
+                  {[...Array(5)].map((_, i) => (
+                    <Skeleton key={i} className="h-8 w-full" />
+                  ))}
+                </div>
+              ) : files.length > 0 ? (
+                <div className="space-y-1">
+                  {files.slice(0, 10).map((file) => (
+                    <div key={file.path} className="flex items-center justify-between p-2 rounded hover:bg-muted/50">
+                      <div className="flex items-center">
+                        {file.type === "dir" ? (
+                          <Folder className="w-4 h-4 mr-2 text-blue-500" />
+                        ) : (
+                          <FileText className="w-4 h-4 mr-2 text-gray-500" />
+                        )}
+                        <span className="text-sm">{file.name}</span>
+                      </div>
+                      {file.size && (
+                        <span className="text-xs text-muted-foreground">{(file.size / 1024).toFixed(1)} KB</span>
+                      )}
+                    </div>
+                  ))}
+                  {files.length > 10 && (
+                    <p className="text-sm text-muted-foreground text-center pt-2">
+                      ... and {files.length - 10} more files
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <p className="text-muted-foreground">No files found</p>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* CI/CD Generation */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center">
+                <Code className="w-5 h-5 mr-2" />
+                CI/CD Pipeline Generation
+              </CardTitle>
+              <CardDescription>Generate optimized CI/CD workflows for this repository</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                <p className="text-sm text-muted-foreground">
+                  Based on the repository analysis, we can generate customized CI/CD pipelines including testing,
+                  building, and deployment workflows.
+                </p>
+                <Button className="w-full" disabled>
+                  <Code className="w-4 h-4 mr-2" />
+                  Generate CI/CD Pipeline (Coming Soon)
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
         </div>
 
-        {/* Repository Stats */}
-        <div className="grid gap-4 md:grid-cols-4">
+        {/* Sidebar */}
+        <div className="space-y-6">
+          {/* Repository Info */}
           <Card>
-            <CardContent className="flex items-center gap-2 p-4">
-              <Star className="h-5 w-5 text-yellow-500" />
+            <CardHeader>
+              <CardTitle>Repository Info</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
               <div>
-                <div className="text-2xl font-bold">{repository.stargazers_count}</div>
-                <div className="text-sm text-muted-foreground">Stars</div>
+                <h4 className="text-sm font-medium mb-2">Owner</h4>
+                <div className="flex items-center space-x-2">
+                  <img
+                    src={repository.owner.avatar_url || "/placeholder.svg"}
+                    alt={repository.owner.login}
+                    className="w-6 h-6 rounded-full"
+                  />
+                  <a
+                    href={repository.owner.html_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-sm text-blue-600 hover:underline"
+                  >
+                    {repository.owner.login}
+                  </a>
+                </div>
               </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="flex items-center gap-2 p-4">
-              <GitFork className="h-5 w-5 text-blue-500" />
-              <div>
-                <div className="text-2xl font-bold">{repository.forks_count}</div>
-                <div className="text-sm text-muted-foreground">Forks</div>
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="flex items-center gap-2 p-4">
-              <Eye className="h-5 w-5 text-green-500" />
-              <div>
-                <div className="text-2xl font-bold">{repository.watchers_count}</div>
-                <div className="text-sm text-muted-foreground">Watchers</div>
-              </div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="flex items-center gap-2 p-4">
-              <GitBranch className="h-5 w-5 text-purple-500" />
-              <div>
-                <div className="text-2xl font-bold">{repository.language || "N/A"}</div>
-                <div className="text-sm text-muted-foreground">Primary Language</div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
 
-        {/* Repository Details */}
-        <Tabs defaultValue="overview" className="space-y-4">
-          <TabsList>
-            <TabsTrigger value="overview">Overview</TabsTrigger>
-            <TabsTrigger value="files">Files</TabsTrigger>
-            <TabsTrigger value="languages">Languages</TabsTrigger>
-          </TabsList>
+              <Separator />
 
-          <TabsContent value="overview" className="space-y-4">
-            <div className="grid gap-6 md:grid-cols-2">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Repository Information</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-2">
+              <div>
+                <h4 className="text-sm font-medium mb-2">Details</h4>
+                <div className="space-y-2 text-sm">
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">Full Name:</span>
-                    <span className="font-mono">{repository.full_name}</span>
+                    <span className="text-muted-foreground">Default branch:</span>
+                    <Badge variant="outline">{repository.default_branch}</Badge>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Size:</span>
+                    <span>{(repository.size / 1024).toFixed(1)} MB</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Created:</span>
                     <span>{new Date(repository.created_at).toLocaleDateString()}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">Last Push:</span>
-                    <span>{new Date(repository.pushed_at).toLocaleDateString()}</span>
+                    <span className="text-muted-foreground">Updated:</span>
+                    <span>{new Date(repository.updated_at).toLocaleDateString()}</span>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Clone URL:</span>
-                    <span className="font-mono text-sm truncate">{repository.clone_url}</span>
+                </div>
+              </div>
+
+              {repository.topics.length > 0 && (
+                <>
+                  <Separator />
+                  <div>
+                    <h4 className="text-sm font-medium mb-2">Topics</h4>
+                    <div className="flex flex-wrap gap-1">
+                      {repository.topics.map((topic) => (
+                        <Badge key={topic} variant="secondary" className="text-xs">
+                          {topic}
+                        </Badge>
+                      ))}
+                    </div>
                   </div>
-                </CardContent>
-              </Card>
+                </>
+              )}
+            </CardContent>
+          </Card>
 
-              <Card>
-                <CardHeader>
-                  <CardTitle>Quick Actions</CardTitle>
-                  <CardDescription>Generate CI/CD pipelines and documentation for this repository</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-2">
-                  <Button className="w-full" disabled>
-                    <Download className="h-4 w-4 mr-2" />
-                    Generate CI/CD Pipeline
-                  </Button>
-                  <Button variant="outline" className="w-full bg-transparent" disabled>
-                    <FileText className="h-4 w-4 mr-2" />
-                    Generate Documentation
-                  </Button>
-                  <p className="text-xs text-muted-foreground">AI-powered features coming soon</p>
-                </CardContent>
-              </Card>
-            </div>
-          </TabsContent>
-
-          <TabsContent value="files" className="space-y-4">
+          {/* Languages */}
+          {languagePercentages.length > 0 && (
             <Card>
               <CardHeader>
-                <CardTitle>Repository Files</CardTitle>
-                <CardDescription>Browse the files and folders in this repository</CardDescription>
+                <CardTitle>Languages</CardTitle>
               </CardHeader>
               <CardContent>
-                <ScrollArea className="h-96">
-                  <div className="space-y-2">
-                    {repository.contents.map((item) => (
-                      <div key={item.path} className="flex items-center gap-2 p-2 rounded hover:bg-muted">
-                        {item.type === "dir" ? (
-                          <Folder className="h-4 w-4 text-blue-500" />
-                        ) : (
-                          <FileText className="h-4 w-4 text-gray-500" />
-                        )}
-                        <span className="flex-1">{item.name}</span>
-                        {item.size && (
-                          <span className="text-sm text-muted-foreground">{(item.size / 1024).toFixed(1)} KB</span>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </ScrollArea>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="languages" className="space-y-4">
-            <Card>
-              <CardHeader>
-                <CardTitle>Language Distribution</CardTitle>
-                <CardDescription>Programming languages used in this repository</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {languagePercentages.map(({ language, percentage }) => (
-                    <div key={language} className="space-y-2">
-                      <div className="flex justify-between text-sm">
+                <div className="space-y-3">
+                  {languagePercentages.slice(0, 5).map(({ language, percentage }) => (
+                    <div key={language}>
+                      <div className="flex justify-between text-sm mb-1">
                         <span>{language}</span>
-                        <span>{percentage}%</span>
+                        <span className="text-muted-foreground">{percentage}%</span>
                       </div>
                       <div className="w-full bg-muted rounded-full h-2">
                         <div className="bg-primary h-2 rounded-full" style={{ width: `${percentage}%` }} />
@@ -345,8 +421,8 @@ export default function AnalyzePage() {
                 </div>
               </CardContent>
             </Card>
-          </TabsContent>
-        </Tabs>
+          )}
+        </div>
       </div>
     </div>
   )

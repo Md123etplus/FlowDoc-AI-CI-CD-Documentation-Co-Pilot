@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server"
-import { clearUserSession } from "@/lib/auth"
+import { clearSession } from "@/lib/auth"
 
 export async function POST() {
   try {
-    await clearUserSession()
-    return NextResponse.json({ success: true })
+    const response = NextResponse.json({ success: true })
+    await clearSession(response)
+    return response
   } catch (error) {
     console.error("Logout error:", error)
-    return NextResponse.json({ error: "Failed to logout" }, { status: 500 })
+    return NextResponse.json({ error: "Logout failed" }, { status: 500 })
   }
 }

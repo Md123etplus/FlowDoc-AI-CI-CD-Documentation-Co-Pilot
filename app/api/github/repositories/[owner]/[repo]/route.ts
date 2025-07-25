@@ -1,12 +1,11 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { getUserSession } from "@/lib/auth"
+import { getSession } from "@/lib/auth"
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ owner: string; repo: string }> }) {
   try {
-    const session = await getUserSession()
-
-    if (!session) {
-      return NextResponse.json({ error: "Not authenticated" }, { status: 401 })
+    const session = await getSession()
+    if (!session?.accessToken) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
     const { owner, repo } = await params
@@ -23,7 +22,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       if (repoResponse.status === 404) {
         return NextResponse.json({ error: "Repository not found" }, { status: 404 })
       }
-      throw new Error("Failed to fetch repository details")
+      throw new Error(`GitHub API error: ${repoResponse.status}`)
     }
 
     const repoData = await repoResponse.json()
@@ -41,26 +40,30 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       languages = await languagesResponse.json()
     }
 
-    // Fetch repository contents (root directory)
-    const contentsResponse = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents`, {
+    // Fetch repository topics
+    const topicsResponse = await fetch(`https://api.github.com/repos/${owner}/${repo}/topics`, {
       headers: {
         Authorization: `Bearer ${session.accessToken}`,
-        Accept: "application/vnd.github.v3+json",
+        Accept: "application/vnd.github.mercy-preview+json",
       },
     })
 
-    let contents = []
-    if (contentsResponse.ok) {
-      contents = await contentsResponse.json()
+    let topics = []
+    if (topicsResponse.ok) {
+      const topicsData = await topicsResponse.json()
+      topics = topicsData.names || []
     }
 
-    return NextResponse.json({
+    // Combine all data
+    const repositoryData = {
       ...repoData,
       languages,
-      contents,
-    })
+      topics,
+    }
+
+    return NextResponse.json(repositoryData)
   } catch (error) {
-    console.error("Error fetching repository details:", error)
-    return NextResponse.json({ error: "Failed to fetch repository details" }, { status: 500 })
+    console.error("Error fetching repository:", error)
+    return NextResponse.json({ error: "Failed to fetch repository data" }, { status: 500 })
   }
 }

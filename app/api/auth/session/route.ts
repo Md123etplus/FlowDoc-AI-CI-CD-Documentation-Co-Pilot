@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server"
-import { getUserSession } from "@/lib/auth"
+import { getSession } from "@/lib/auth"
 
 export async function GET() {
   try {
-    const session = await getUserSession()
+    const session = await getSession()
 
     if (!session) {
       return NextResponse.json({ authenticated: false })
@@ -12,10 +12,9 @@ export async function GET() {
     return NextResponse.json({
       authenticated: true,
       user: session.user,
-      accessToken: session.accessToken,
     })
   } catch (error) {
     console.error("Session check error:", error)
-    return NextResponse.json({ authenticated: false }, { status: 500 })
+    return NextResponse.json({ authenticated: false })
   }
 }
