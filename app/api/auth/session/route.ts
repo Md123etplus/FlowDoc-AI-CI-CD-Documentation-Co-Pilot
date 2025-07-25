@@ -2,13 +2,19 @@ import { NextResponse } from "next/server"
 import { getUserSession } from "@/lib/auth"
 
 export async function GET() {
-  const session = await getUserSession()
+  try {
+    const session = await getUserSession()
 
-  if (!session) {
-    return NextResponse.json(null, { status: 401 })
+    if (!session) {
+      return NextResponse.json({ authenticated: false })
+    }
+
+    return NextResponse.json({
+      authenticated: true,
+      user: session.user,
+    })
+  } catch (error) {
+    console.error("Session check error:", error)
+    return NextResponse.json({ authenticated: false })
   }
-
-  return NextResponse.json({
-    user: session.user,
-  })
 }

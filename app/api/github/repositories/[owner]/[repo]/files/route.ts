@@ -1,30 +1,36 @@
-import { NextResponse } from "next/server"
+import { type NextRequest, NextResponse } from "next/server"
 import { getUserSession } from "@/lib/auth"
-import { GitHubAPI } from "@/lib/github"
 
-export async function GET(request: Request, { params }: { params: { owner: string; repo: string } }) {
+export async function GET(request: NextRequest, { params }: { params: { owner: string; repo: string } }) {
   try {
     const session = await getUserSession()
 
-    if (!session || !session.accessToken) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    if (!session) {
+      return NextResponse.json({ error: "Not authenticated" }, { status: 401 })
     }
 
     const { owner, repo } = params
-    const github = new GitHubAPI(session.accessToken)
+    const searchParams = request.nextUrl.searchParams
+    const path = searchParams.get("path") || ""
 
-    // Fetch workflow files
-    const workflowFiles = await github.getWorkflowFiles(owner, repo)
+    const response = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${path}`, {
+      headers: {
+        Authorization: `Bearer ${session.accessToken}`,
+        Accept: "application/vnd.github.v3+json",
+      },
+    })
 
-    // Fetch documentation files
-    const documentationFiles = await github.getDocumentationFiles(owner, repo)
+    if (!response.ok) {
+      if (response.status === 404) {
+        return NextResponse.json({ error: "Path not found" }, { status: 404 })
+      }
+      throw new Error("Failed to fetch repository files")
+    }
 
-    // Combine all files
-    const allFiles = [...workflowFiles, ...documentationFiles]
-
-    return NextResponse.json(allFiles)
+    const files = await response.json()
+    return NextResponse.json(files)
   } catch (error) {
-    console.error("Error fetching repository files:", error)
+    console.error("GitHub files API error:", error)
     return NextResponse.json({ error: "Failed to fetch repository files" }, { status: 500 })
   }
 }
