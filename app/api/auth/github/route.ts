@@ -1,12 +1,18 @@
 import { NextResponse } from "next/server"
-import { getGitHubAuthUrl } from "@/lib/auth"
+import { getAuthorizationUrl } from "@/lib/auth"
 
 export async function GET() {
   try {
-    const authUrl = getGitHubAuthUrl()
+    const authUrl = getAuthorizationUrl()
     return NextResponse.redirect(authUrl)
   } catch (error) {
-    console.error("GitHub auth error:", error)
-    return NextResponse.json({ error: "Failed to initiate GitHub authentication" }, { status: 500 })
+    console.error("GitHub OAuth error:", error)
+    // Redirect to an error page or show an error message
+    return NextResponse.redirect(
+      new URL(
+        "/auth/error?message=Missing+GitHub+OAuth+configuration",
+        process.env.NEXTAUTH_URL || "http://localhost:3000",
+      ),
+    )
   }
 }

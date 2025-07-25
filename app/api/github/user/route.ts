@@ -6,7 +6,7 @@ export async function GET() {
     const session = await getUserSession()
 
     if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+      return NextResponse.json({ error: "Not authenticated" }, { status: 401 })
     }
 
     const response = await fetch("https://api.github.com/user", {
@@ -17,7 +17,7 @@ export async function GET() {
     })
 
     if (!response.ok) {
-      throw new Error(`GitHub API error: ${response.status}`)
+      throw new Error("Failed to fetch user data")
     }
 
     const userData = await response.json()
