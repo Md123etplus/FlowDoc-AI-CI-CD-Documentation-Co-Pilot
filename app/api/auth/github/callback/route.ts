@@ -66,9 +66,9 @@ export async function GET(request: NextRequest) {
       accessToken,
     })
 
-    return NextResponse.redirect("/dashboard")
+    return NextResponse.redirect(new URL('/dashboard', request.url))
   } catch (error) {
     console.error("GitHub callback error:", error)
-    return NextResponse.redirect("/auth/error?error=callback_failed")
+    return NextResponse.redirect(new URL('/auth/error?error=callback_failed', request.url))
   }
 }

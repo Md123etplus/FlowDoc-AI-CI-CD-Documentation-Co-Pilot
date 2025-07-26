@@ -17,7 +17,7 @@ export function GitHubAuthModal({ isOpen, onOpenChange }: GitHubAuthModalProps) 
     try {
       setIsLoading(true)
       // Redirect to GitHub OAuth
-      window.location.href = "/api/auth/github"
+      window.location.assign("/api/auth/github")
     } catch (error) {
       console.error("Authentication error:", error)
       setIsLoading(false)
