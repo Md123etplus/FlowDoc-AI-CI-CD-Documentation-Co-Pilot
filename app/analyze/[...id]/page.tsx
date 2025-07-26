@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { DocumentationPreviewModal } from "@/components/documentation-preview-modal"
 import {
   ArrowLeft,
   Star,
@@ -63,6 +64,7 @@ export default function AnalyzePage() {
   const [filesLoading, setFilesLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null)
+  const [showDocModal, setShowDocModal] = useState(false)
 
   // Parse repository ID from URL segments
   const repositoryId = Array.isArray(params.id) ? params.id.join("/") : params.id
@@ -424,14 +426,14 @@ export default function AnalyzePage() {
             </CardContent>
           </Card>
 
-          {/* CI/CD Generation */}
+          {/* AI Generation */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center">
                 <Settings className="w-5 h-5 mr-2" />
-                CI/CD Generation
+                AI Generation
               </CardTitle>
-              <CardDescription>Generate automated workflows for this repository</CardDescription>
+              <CardDescription>Generate automated content for this repository</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
               <Button className="w-full" disabled>
@@ -441,20 +443,24 @@ export default function AnalyzePage() {
                   Coming Soon
                 </Badge>
               </Button>
-              <Button variant="outline" className="w-full bg-transparent" disabled>
+              <Button variant="outline" className="w-full bg-transparent" onClick={() => setShowDocModal(true)}>
                 <FileText className="w-4 h-4 mr-2" />
                 Generate Documentation
-                <Badge variant="secondary" className="ml-2">
-                  Coming Soon
-                </Badge>
               </Button>
               <p className="text-xs text-muted-foreground">
-                AI-powered pipeline generation based on your repository structure and technologies.
+                AI-powered content generation based on your repository structure and technologies.
               </p>
             </CardContent>
           </Card>
         </div>
       </div>
+
+      {/* Documentation Preview Modal */}
+      <DocumentationPreviewModal
+        isOpen={showDocModal}
+        onOpenChange={setShowDocModal}
+        repositoryId={repositoryId || ""}
+      />
     </div>
   )
 }
